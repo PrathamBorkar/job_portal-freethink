@@ -1,2 +1,4 @@
 # job_portal-freethink
-internship project 
+
+internship project
+The backend for the job portal
