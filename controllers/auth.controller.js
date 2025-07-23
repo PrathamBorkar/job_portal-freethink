@@ -4,19 +4,60 @@ const jwt = require('jsonwebtoken');
 
 
 
-exports.register = async (req, res) => {
- const { fullName, email, password, role } = req.body;
+exports.Uregister = async (req, res) => {
+  const {
+    first_name,
+    middle_name,
+    last_name,
+    username,
+    email,
+    password,
+    phone,
+    age,
+    gender,
+    resume_url
+  } = req.body;
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const sql = "INSERT INTO users (fullName, email, password, role) VALUES (?, ?, ?, ?)";
-    const [result] = await pool.query(sql, [fullName, email, hashedPassword, role]);
 
-    res.status(201).json({ message: "User registered", userId: result.insertId });
+    const sql = `
+      INSERT INTO users (
+        first_name, middle_name, last_name, username,
+        email, password_hash, phone, age, gender, resume_url
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      first_name,
+      middle_name || null,
+      last_name,
+      username,
+      email,
+      hashedPassword,
+      phone || null,
+      age || null,
+      gender,
+      resume_url || null
+    ];
+
+    const [result] = await pool.query(sql, values);
+
+    res.status(201).json({
+      message: "User registered successfully",
+      userId: result.insertId
+    });
   } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({
+        error: "Username or Email already exists"
+      });
+    }
     res.status(500).json({ error: err.message });
   }
 };
+
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
