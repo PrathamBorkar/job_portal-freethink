@@ -1,37 +1,90 @@
 const pool = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { sendEmail } = require("../utils/mailer");
+const otpStore = new Map();
+
+exports.sendOTP = async (req, res) => {
+  const { email } = req.body;
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  otpStore.set(email, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
+  try {
+    await sendEmail(email, "Your OTP Code", `Your OTP code is ${otp}`);
+    res.json({ message: "OTP sent to your email", nextStep: "verify-otp" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to send OTP" });
+  }
+};
+
+exports.verifyOTP = (req, res) => {
+  const { email, otp } = req.body;
+  const record = otpStore.get(email);
+  if (!record || record.otp !== otp || Date.now() > record.expiresAt) {
+    return res.status(400).json({ message: "Invalid or expired OTP" });
+  }
+  otpStore.delete(email);
+  res.json({
+    success: true,
+    message: "OTP verified successfully",
+    nextStep: "role-selection",
+  });
+};
 
 exports.register = async (req, res) => {
-  const { name, email, password, role, phone } = req.body;
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const { token, name, email, password, phone, role, company } = req.body;
 
-    const sql =
-      "INSERT INTO users (name, email, password, role, phone) VALUES (?, ?, ?, ?, ?)";
-
-    const [result] = await pool.query(sql, [
-      name,
-      email,
-      hashedPassword,
-      role,
-      phone,
-    ]);
-
-    if (role === "recruiter") {
-      const sql1 = "INSERT INTO recruiters (uid, cid) VALUES (?, ?)";
-      await pool.query(sql1, [result.insertId, 1]);
-    } else {
-      const sql1 = "INSERT INTO applicants (uid) VALUES (?)";
-      await pool.query(sql1, [result.insertId]);
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.email !== email) {
+      return res.status(400).json({ error: "Invalid token" });
     }
 
-    res
-      .status(201)
-      .json({ message: "User registered", userId: result.insertId });
+    // Insert into users table
+    const [userResult] = await conn.query(
+      "INSERT INTO users (name, email, password, phone, role) VALUES (?, ?, ?, ?, ?)",
+      [name, email, await bcrypt.hash(password, 10), phone, role]
+    );
+    const uid = userResult.insertId;
+
+    // Role-specific handling
+    if (role === "recruiter" && company) {
+      const [companyResult] = await conn.query(
+        "INSERT INTO company (name, location, description) VALUES (?, ?, ?)",
+        [company.name, company.location, company.description]
+      );
+      const cid = companyResult.insertId;
+      await conn.query("INSERT INTO recruiter (uid, cid) VALUES (?, ?)", [
+        uid,
+        cid,
+      ]);
+    } else if (role === "applicant") {
+      await conn.query("INSERT INTO applicant (uid) VALUES (?)", [uid]);
+    }
+
+    await conn.commit();
+    res.json({
+      success: true,
+      message:
+        role === "applicant"
+          ? "Registration successful, redirecting to homepage"
+          : "Registration successful, please confirm",
+      nextStep: role === "applicant" ? "homepage" : "confirmation",
+      userId: uid,
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await conn.rollback();
+    if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+    res
+      .status(500)
+      .json({ error: "Registration failed", details: err.message });
+  } finally {
+    conn.release();
   }
 };
 
@@ -70,6 +123,14 @@ exports.login = async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await conn.rollback();
+    if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+    res
+      .status(500)
+      .json({ error: "Registration failed", details: err.message });
+  } finally {
+    conn.release();
   }
 };

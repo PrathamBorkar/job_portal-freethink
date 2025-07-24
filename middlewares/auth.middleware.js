@@ -3,7 +3,7 @@ const { body, validationResult } = require("express-validator");
 const registerlogger = (req, res, next) => {
   console.log(
     `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} Name: '${
-      req.body.fullName || "No name"
+      req.body.name || "No name"
     }' with password: '${req.body.password || "not provided"}'`
   );
   next();
@@ -11,11 +11,20 @@ const registerlogger = (req, res, next) => {
 
 const loginlogger = (req, res, next) => {
   console.log(
-    `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} Name: '${
+    `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} Email: '${
       req.body.email || "No Email"
     }' with password: '${req.body.password || "not provided"}'`
   );
   next();
+};
+
+const otpLogger = (req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  next();
+};
+
+module.exports = {
+  otpLogger,
 };
 
 const registerValidation = [
