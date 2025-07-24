@@ -19,7 +19,7 @@ const loginlogger = (req, res, next) => {
 };
 
 const registerValidation = [
-  body("fullName").notEmpty().withMessage("Full name is required"),
+  body("name").notEmpty().withMessage("name is required"),
   body("email").isEmail().withMessage("Valid email is required"),
   body("password")
     .notEmpty()

@@ -1,13 +1,18 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+
 const authRoutes = require("./routes/auth.routes");
+const skillRoutes = require("./routes/skill.routes");
+const rootRoutes = require("./routes/root.routes");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use("/", rootRoutes);
 app.use("/auth", authRoutes);
+app.use("/skills", skillRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
