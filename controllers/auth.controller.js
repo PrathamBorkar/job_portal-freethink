@@ -20,7 +20,9 @@ exports.verifyOTP = (req, res) => {
   const { email, otp } = req.body;
   const record = otpStore.get(email);
   if (!record || record.otp !== otp || Date.now() > record.expiresAt) {
-    return res.status(400).json({ message: "Invalid or expired OTP" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid or expired OTP" });
   }
   otpStore.delete(email);
   res.json({
@@ -56,7 +58,7 @@ exports.register = async (req, res) => {
     );
     const uid = userResult.insertId;
 
-    if (role === "recruiter" && company) {
+    if (role === "recruiter") {
       if (cid === null) {
         const [companyResult] = await conn.query(
           "INSERT INTO company (name, location, description) VALUES (?, ?, ?)",
@@ -155,17 +157,19 @@ exports.login = async (req, res) => {
 
     const user = rows[0];
 
-    if (!user) return res.status(401).json({ message: "Invalid email" });
+    if (!user) {
+      return res.status(401).json({ message: "Invalid email" });
+    }
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ message: "Invalid password" });
+    if (!match) {
+      return res.status(401).json({ message: "Invalid password" });
+    }
 
     const token = jwt.sign(
       { email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      }
+      { expiresIn: "1d" }
     );
 
     res.json({
@@ -180,14 +184,12 @@ exports.login = async (req, res) => {
       },
     });
   } catch (err) {
-    await conn.rollback();
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
       return res.status(400).json({ error: "Invalid or expired token" });
     }
-    res
-      .status(500)
-      .json({ error: "Registration failed", details: err.message });
-  } finally {
-    conn.release();
+    res.status(500).json({
+      error: "Login failed",
+      details: err.message,
+    });
   }
 };
