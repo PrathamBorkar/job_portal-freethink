@@ -23,10 +23,6 @@ const otpLogger = (req, res, next) => {
   next();
 };
 
-module.exports = {
-  otpLogger,
-};
-
 const registerValidation = [
   body("name").notEmpty().withMessage("name is required"),
   body("email").isEmail().withMessage("Valid email is required"),
@@ -64,6 +60,7 @@ const loginValidation = [
 ];
 
 module.exports = {
+  otpLogger,
   registerlogger,
   loginlogger,
   registerValidation,
