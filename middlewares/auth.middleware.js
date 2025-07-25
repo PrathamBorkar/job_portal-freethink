@@ -1,62 +1,29 @@
-const { body, validationResult } = require("express-validator");
+// middlewares/auth.middleware.js
+const jwt = require("jsonwebtoken");
 
-const registerlogger = (req, res, next) => {
-  console.log(
-    `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} Name: '${
-      req.body.fullName || "No name"
-    }' with password: '${req.body.password || "not provided"}'`
-  );
-  next();
-};
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
-const loginlogger = (req, res, next) => {
-  console.log(
-    `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} Name: '${
-      req.body.email || "No Email"
-    }' with password: '${req.body.password || "not provided"}'`
-  );
-  next();
-};
+  if (!token) {
+    return res.status(401).json({ 
+      success: false, 
+      message: "Access token required" 
+    });
+  }
 
-const registerValidation = [
-  body("name").notEmpty().withMessage("name is required"),
-  body("email").isEmail().withMessage("Valid email is required"),
-  body("password")
-    .notEmpty()
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters"),
-  body("role").notEmpty().withMessage("Role is required"),
-  body("phone")
-    .notEmpty()
-    .isLength({ min: 10, max: 10 })
-    .withMessage("Phone number must be exact 10 characters"),
-  (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Invalid or expired token" 
+      });
     }
+    req.user = user;
     next();
-  },
-];
-
-const loginValidation = [
-  body("email").isEmail().withMessage("Valid email is required"),
-  body("password")
-    .notEmpty()
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters"),
-  (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-    next();
-  },
-];
+  });
+};
 
 module.exports = {
-  registerlogger,
-  loginlogger,
-  registerValidation,
-  loginValidation,
+  authenticateToken
 };
