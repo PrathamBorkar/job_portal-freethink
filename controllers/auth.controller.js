@@ -10,9 +10,9 @@ exports.sendOTP = async (req, res) => {
   otpStore.set(email, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
   try {
     await sendEmail(email, "Your OTP Code", `Your OTP code is ${otp}`);
-    res.json({ message: "OTP sent to your email", nextStep: "verify-otp" });
+    res.json({ message: "OTP sent to your email" });
   } catch (err) {
-    res.status(500).json({ error: "Failed to send OTP" });
+    res.status(500).json({ message: "Failed to send OTP" });
   }
 };
 
@@ -28,7 +28,6 @@ exports.verifyOTP = (req, res) => {
   res.json({
     success: true,
     message: "OTP verified successfully",
-    nextStep: "role-selection",
   });
 };
 
@@ -49,6 +48,7 @@ exports.register = async (req, res) => {
       experience,
       skillids,
     } = req.body;
+    let token = null;
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -115,13 +115,9 @@ exports.register = async (req, res) => {
 
     await conn.commit();
 
-    const token = jwt.sign(
-      { email: email, role: role },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1d",
-      }
-    );
+    token = jwt.sign({ email: email, role: role }, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
 
     res.json({
       message: "Registration successful",
@@ -137,11 +133,11 @@ exports.register = async (req, res) => {
   } catch (err) {
     await conn.rollback();
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-      return res.status(400).json({ error: "Invalid or expired token" });
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired token", token, user: {} });
     }
-    res
-      .status(500)
-      .json({ error: "Registration failed", details: err.message });
+    res.status(500).json({ message: err.message, token, user: {} });
   } finally {
     conn.release();
   }
@@ -149,7 +145,7 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
-
+  let token = null;
   try {
     const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [
       email,
@@ -158,15 +154,19 @@ exports.login = async (req, res) => {
     const user = rows[0];
 
     if (!user) {
-      return res.status(401).json({ message: "Invalid email" });
+      return res
+        .status(401)
+        .json({ message: "Invalid email", token, user: {} });
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
-      return res.status(401).json({ message: "Invalid password" });
+      return res
+        .status(401)
+        .json({ message: "Invalid password", token, user: {} });
     }
 
-    const token = jwt.sign(
+    token = jwt.sign(
       { email: user.email, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
@@ -185,11 +185,14 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-      return res.status(400).json({ error: "Invalid or expired token" });
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired token", token, user: {} });
     }
     res.status(500).json({
-      error: "Login failed",
-      details: err.message,
+      message: err.message,
+      token,
+      user: {},
     });
   }
 };
