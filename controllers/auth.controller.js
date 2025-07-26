@@ -34,6 +34,7 @@ exports.verifyOTP = (req, res) => {
 exports.register = async (req, res) => {
   const conn = await pool.getConnection();
   await conn.beginTransaction();
+  let token = null;
 
   try {
     const {
@@ -48,7 +49,6 @@ exports.register = async (req, res) => {
       experience,
       skillids,
     } = req.body;
-    let token = null;
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -120,6 +120,7 @@ exports.register = async (req, res) => {
     });
 
     res.json({
+      success: true,
       message: "Registration successful",
       token,
       user: {
@@ -133,11 +134,16 @@ exports.register = async (req, res) => {
   } catch (err) {
     await conn.rollback();
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired token", token, user: {} });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+        token,
+        user: {},
+      });
     }
-    res.status(500).json({ message: err.message, token, user: {} });
+    res
+      .status(500)
+      .json({ success: false, message: err.message, token, user: {} });
   } finally {
     conn.release();
   }
