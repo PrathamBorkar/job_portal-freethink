@@ -10,9 +10,9 @@ exports.sendOTP = async (req, res) => {
   otpStore.set(email, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
   try {
     await sendEmail(email, "Your OTP Code", `Your OTP code is ${otp}`);
-    res.json({ message: "OTP sent to your email" });
+    res.json({ success: true, message: "OTP sent to your email" });
   } catch (err) {
-    res.status(500).json({ message: "Failed to send OTP" });
+    res.status(500).json({ success: false, message: "Failed to send OTP" });
   }
 };
 
@@ -162,14 +162,14 @@ exports.login = async (req, res) => {
     if (!user) {
       return res
         .status(401)
-        .json({ message: "Invalid email", token, user: {} });
+        .json({ success: false, message: "Invalid email", token, user: {} });
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       return res
         .status(401)
-        .json({ message: "Invalid password", token, user: {} });
+        .json({ success: false, message: "Invalid password", token, user: {} });
     }
 
     token = jwt.sign(
@@ -179,6 +179,7 @@ exports.login = async (req, res) => {
     );
 
     res.json({
+      success: true,
       message: "Login successful",
       token,
       user: {
@@ -191,11 +192,15 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired token", token, user: {} });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+        token,
+        user: {},
+      });
     }
     res.status(500).json({
+      success: false,
       message: err.message,
       token,
       user: {},
