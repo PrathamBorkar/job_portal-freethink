@@ -19,5 +19,6 @@ router.post(
 router.post("/login", loginlogger, loginValidation, authController.login);
 router.post("/send-otp", otpLogger, authController.sendOTP);
 router.post("/verify-otp", otpLogger, authController.verifyOTP);
+router.post("/change-pass", loginlogger, authController.changePassword);
 
 module.exports = router;

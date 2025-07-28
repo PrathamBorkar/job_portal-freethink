@@ -31,6 +31,39 @@ exports.verifyOTP = (req, res) => {
   });
 };
 
+exports.changePassword = async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and new password are required.",
+    });
+  }
+
+  try {
+    const newHashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const [result] = await pool.query(
+      "UPDATE users SET password = ? WHERE email = ?",
+      [newHashedPassword, email]
+    );
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+    }
+
+    res
+      .status(200)
+      .json({ success: true, message: "Password updated successfully." });
+  } catch (error) {
+    console.error("Error changing password:", error.message);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
 exports.register = async (req, res) => {
   const conn = await pool.getConnection();
   await conn.beginTransaction();
