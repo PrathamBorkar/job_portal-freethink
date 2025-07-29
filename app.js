@@ -19,7 +19,7 @@ app.use("/skills", skillRoutes);
 app.use("/company", companyRoutes);
 app.use("/resume", resumeRoutes);
 
-setInterval(updatePopularityScores, 1 * 60 * 1000);
+setInterval(updatePopularityScores, 30 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
