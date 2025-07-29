@@ -1,4 +1,4 @@
-const skilllogger = (req, res, next) => {
+const companylogger = (req, res, next) => {
   console.log(
     `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} `
   );
@@ -6,5 +6,5 @@ const skilllogger = (req, res, next) => {
 };
 
 module.exports = {
-  skilllogger,
+  companylogger,
 };

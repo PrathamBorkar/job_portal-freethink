@@ -5,13 +5,20 @@ exports.companies = async (req, res) => {
     const [rows] = await pool.query("SELECT * FROM company");
 
     if (!rows)
-      return res.status(401).json({ message: "No compnies in database" });
+      return res.status(401).json({
+        success: false,
+        message: "No compnies in database",
+        companies: [],
+      });
 
     res.json({
+      success: true,
       message: "All companies fetched successfully",
       companies: rows.map((row) => [row.cid, row.name]),
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res
+      .status(500)
+      .json({ success: false, message: err.message, companies: [] });
   }
 };
