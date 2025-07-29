@@ -41,7 +41,9 @@ DROP TABLE IF EXISTS `applicants`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `applicants` (
   `uid` int NOT NULL,
+  `resume_url` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`uid`),
+  UNIQUE KEY `resume_url_UNIQUE` (`resume_url`),
   CONSTRAINT `user_id_foreign_key` FOREIGN KEY (`uid`) REFERENCES `users` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -78,7 +80,7 @@ CREATE TABLE `company` (
   `location` varchar(100) DEFAULT 'No Loc',
   `description` mediumtext,
   PRIMARY KEY (`cid`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -102,7 +104,7 @@ CREATE TABLE `education` (
   PRIMARY KEY (`eid`),
   KEY `fk_edu_1_idx` (`uid`),
   CONSTRAINT `fk_edu_1` FOREIGN KEY (`uid`) REFERENCES `applicants` (`uid`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -122,7 +124,7 @@ CREATE TABLE `experience` (
   PRIMARY KEY (`expid`),
   KEY `fk_exp_uid_idx` (`uid`),
   CONSTRAINT `fk_exp_uid` FOREIGN KEY (`uid`) REFERENCES `applicants` (`uid`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -136,9 +138,10 @@ CREATE TABLE `jobs` (
   `jobid` int NOT NULL AUTO_INCREMENT,
   `uid` int NOT NULL,
   `title` varchar(100) NOT NULL,
-  `description` mediumtext,
+  `description` json DEFAULT NULL,
   `location` varchar(100) DEFAULT NULL,
   `posted` date NOT NULL,
+  `popularity_score` float NOT NULL DEFAULT '0',
   PRIMARY KEY (`jobid`),
   KEY `fk_job_1_idx` (`uid`),
   CONSTRAINT `fk_job_1` FOREIGN KEY (`uid`) REFERENCES `recruiters` (`uid`) ON DELETE CASCADE ON UPDATE CASCADE
@@ -195,7 +198,7 @@ CREATE TABLE `users` (
   PRIMARY KEY (`uid`),
   UNIQUE KEY `email_UNIQUE` (`email`),
   UNIQUE KEY `password_UNIQUE` (`password`)
-) ENGINE=InnoDB AUTO_INCREMENT=26 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=45 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -207,4 +210,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-07-25 23:20:41
+-- Dump completed on 2025-07-29 14:02:19
