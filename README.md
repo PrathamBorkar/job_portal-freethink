@@ -1,4 +1,7 @@
-# job_portal-freethink
+To run this do these steps:
 
-internship project
-The backend for the job portal
+step 1: python -m venv venv
+
+step 2: venv\Scripts\activate
+
+step 3: pip install -r requirements.txt

@@ -1,3 +1,13 @@
-node_modules/
+# Python
+*.pyc
+__pycache__/
+
+# Virtual environment
+venv/
+
 .env
-resumes/
+
+# Other files to ignore 
+.vscode/
+.idea/
+.DS_Store

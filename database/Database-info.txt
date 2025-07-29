@@ -1,1 +1,0 @@
-The dump file contained in this folder is the schema of the database that the below express backend is functional for. It is just a structure dump so you would have to insert the rows.
