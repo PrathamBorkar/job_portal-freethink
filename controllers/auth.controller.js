@@ -35,6 +35,7 @@ exports.register = async (req, res) => {
   const conn = await pool.getConnection();
   await conn.beginTransaction();
   let token = null;
+  console.log("Registering user...");
 
   try {
     const {
