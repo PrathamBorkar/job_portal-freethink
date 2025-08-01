@@ -7,16 +7,25 @@ const skillRoutes = require("./routes/skill.routes");
 const companyRoutes = require("./routes/company.routes");
 const rootRoutes = require("./routes/root.routes");
 const resumeRoutes = require("./routes/resume.routes");
+const jobsRoutes = require("./routes/jobs.routes");
 
 const app = express();
-app.use(cors());
+
+// ✅ Corrected CORS config
+app.use(cors({
+  origin: 'http://localhost:9000',
+  credentials: true
+}));
+
 app.use(express.json());
 
+// Route setup
 app.use("/", rootRoutes);
 app.use("/auth", authRoutes);
 app.use("/skills", skillRoutes);
 app.use("/company", companyRoutes);
 app.use("/resume", resumeRoutes);
+app.use("/jobs",jobsRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>

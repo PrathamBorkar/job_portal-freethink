@@ -119,19 +119,34 @@ exports.register = async (req, res) => {
     token = jwt.sign({ email: email, role: role }, process.env.JWT_SECRET, {
       expiresIn: "1d",
     });
+let recruiterInfo = null;
 
-    res.json({
-      success: true,
-      message: "Registration successful",
-      token,
-      user: {
-        uid: uid,
-        email: email,
-        name: name,
-        role: role,
-        phone: phone,
-      },
-    });
+if (role === 'recruiter') {
+  const [companyData] = await conn.query(`
+    SELECT c.cid, c.name AS companyName, c.location, c.description
+    FROM recruiters r
+    JOIN company c ON r.cid = c.cid
+    WHERE r.uid = ?
+  `, [uid]);
+
+  recruiterInfo = companyData[0] || null;
+}
+
+res.json({
+  success: true,
+  message: "Registration successful",
+  token,
+  user: {
+    uid: uid,
+    email: email,
+    name: name,
+    role: role,
+    phone: phone,
+    ...(recruiterInfo && {
+      company: recruiterInfo
+    })
+  }
+});
   } catch (err) {
     await conn.rollback();
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
@@ -188,6 +203,84 @@ exports.login = async (req, res) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
+      }
+      ,
+
+      
+    });
+  } catch (err) {
+    if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired token", token, user: {} });
+    }
+    res.status(500).json({
+      message: err.message,
+      token,
+      user: {},
+    });
+  }
+};
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
+  let token = null;
+  try {
+    const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [
+      email,
+    ]);
+
+    const user = rows[0];
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ message: "Invalid email", token, user: {} });
+    }
+
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res
+        .status(401)
+        .json({ message: "Invalid password", token, user: {} });
+    }
+
+    token = jwt.sign(
+
+      {  id: user.uid,        // ← ADD THIS LINE (use whatever your user ID field is called)
+    email: user.email,
+    role: user.role  },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    let recruiterInfo = null;
+
+    if (user.role === "recruiter") {
+      const [companyData] = await pool.query(
+        `
+        SELECT c.cid, c.name AS companyName, c.location, c.description
+        FROM recruiters r
+        JOIN company c ON r.cid = c.cid
+        WHERE r.uid = ?
+        `,
+        [user.uid]
+      );
+
+      recruiterInfo = companyData[0] || null;
+    }
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        uid: user.uid,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        phone: user.phone,
+        ...(recruiterInfo && {
+          company: recruiterInfo,
+        }),
       },
     });
   } catch (err) {

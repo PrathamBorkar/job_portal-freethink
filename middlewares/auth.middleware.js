@@ -1,4 +1,5 @@
 const { body, validationResult } = require("express-validator");
+const jwt = require('jsonwebtoken'); // ← ADD THIS LINE
 
 const registerlogger = (req, res, next) => {
   console.log(
@@ -59,10 +60,33 @@ const loginValidation = [
   },
 ];
 
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Expecting: "Bearer <token>"
+
+  
+  console.log('Auth header:', authHeader);
+  console.log('Extracted token:', token);
+  if (!token) {
+    return res.status(401).json({ error: 'Access denied. No token provided.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // attach user data to request
+    console.log('Token verified, user:', decoded); // ← ADD DEBUG LOG
+    next();
+  } catch (err) {
+    console.error('Token verification failed:', err.message); // ← ADD DEBUG LOG
+    return res.status(403).json({ error: 'Invalid or expired token.' });
+  }
+};
+
 module.exports = {
   otpLogger,
   registerlogger,
   loginlogger,
   registerValidation,
   loginValidation,
+  verifyToken,
 };
