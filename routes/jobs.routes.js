@@ -15,4 +15,8 @@ router.get('/getJobs', verifyToken,jobsController.getJobs);
 // Delete a job by ID
 router.delete('/deleteJob/:jobid',verifyToken, jobsController.deleteJob);
 
+
+router.get('/getJobsByRecruiter', verifyToken, jobsController.getJobsByRecruiter);
+  
+ router.get('/getTotalJobsByRecruiter', verifyToken, jobsController.getTotalJobsByRecruiter);
 module.exports = router;
