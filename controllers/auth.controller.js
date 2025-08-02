@@ -152,6 +152,25 @@ exports.register = async (req, res) => {
       expiresIn: "1d",
     });
 
+    if (role === "recruiter") {
+      const [companyData] = await conn.query(
+        `
+
+    SELECT c.cid, c.name AS companyName, c.location, c.description
+
+    FROM recruiters r
+
+    JOIN company c ON r.cid = c.cid
+
+    WHERE r.uid = ?
+
+  `,
+        [uid]
+      );
+
+      recruiterInfo = companyData[0] || null;
+    }
+
     res.json({
       success: true,
       message: "Registration successful",
@@ -162,6 +181,10 @@ exports.register = async (req, res) => {
         name: name,
         role: role,
         phone: phone,
+
+        ...(recruiterInfo && {
+          company: recruiterInfo,
+        }),
       },
     });
   } catch (err) {
@@ -195,24 +218,43 @@ exports.login = async (req, res) => {
     if (!user) {
       return res
         .status(401)
-        .json({ success: false, message: "Invalid email", token, user: {} });
+        .json({ message: "Invalid email", token, user: {} });
     }
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) {
       return res
         .status(401)
-        .json({ success: false, message: "Invalid password", token, user: {} });
+        .json({ message: "Invalid password", token, user: {} });
     }
 
     token = jwt.sign(
-      { email: user.email, role: user.role },
+      {
+        id: user.uid, // ← ADD THIS LINE (use whatever your user ID field is called)
+        email: user.email,
+        role: user.role,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
+    let recruiterInfo = null;
+
+    if (user.role === "recruiter") {
+      const [companyData] = await pool.query(
+        `
+        SELECT c.cid, c.name AS companyName, c.location, c.description
+        FROM recruiters r
+        JOIN company c ON r.cid = c.cid
+        WHERE r.uid = ?
+        `,
+        [user.uid]
+      );
+
+      recruiterInfo = companyData[0] || null;
+    }
+
     res.json({
-      success: true,
       message: "Login successful",
       token,
       user: {
@@ -221,19 +263,18 @@ exports.login = async (req, res) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
+        ...(recruiterInfo && {
+          company: recruiterInfo,
+        }),
       },
     });
   } catch (err) {
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired token",
-        token,
-        user: {},
-      });
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired token", token, user: {} });
     }
     res.status(500).json({
-      success: false,
       message: err.message,
       token,
       user: {},
