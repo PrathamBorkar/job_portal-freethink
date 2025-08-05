@@ -3,72 +3,98 @@ const pool = require("../config/db");
 
 // ✅ Create Job (for recruiter)
 exports.createJob = async (req, res) => {
+  console.log("Creating job with data:", req.body);
   try {
-    const { 
-      title, 
-      jobType, 
-      modeOfWork, 
-      experienceRequired, 
-      salary, 
-      location, 
-      skills, 
-      recruiterEmail, 
-      recruiterName,
-      description 
+    const {
+      title,
+      job_type,
+      mode_of_work,
+      exp_required,
+      salary,
+      equity,
+      lid,
+      skillids,
+      smallDescription,
+      bigDescription,
+      links
     } = req.body;
-    
+
     const userEmail = req.user?.email;
-    
+
     if (!userEmail) {
       return res.status(401).json({ message: "Unauthorized: Recruiter not authenticated" });
     }
 
-    // Get user ID from database using email
     const [userRows] = await pool.query("SELECT uid FROM users WHERE email = ?", [userEmail]);
-    
+
     if (userRows.length === 0) {
       return res.status(401).json({ message: "User not found" });
     }
-    
+
     const uid = userRows[0].uid;
-    
-    if (!title) {
-      return res.status(400).json({ message: "Title is required" });
+    const [companyRows] = await pool.query("SELECT cid FROM recruiters WHERE uid = ?", [uid]);
+    if (companyRows.length === 0) {
+      return res.status(400).json({ message: "Company not found for this user" });
+    }
+    const cid = companyRows[0].cid;
+
+    if (
+      !title || !job_type || !mode_of_work || exp_required === undefined ||
+      !salary?.min || !salary?.max 
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // ✅ Create comprehensive description object with all job details
-    const jobDescription = {
-      jobType: jobType || 'Full-time',
-      modeOfWork: modeOfWork || 'Office',
-      experienceRequired: experienceRequired || '0-1 years',
-      salary: salary || 'Not specified',
-      location: location || 'Not specified',
-      skills: skills || [],
-      recruiterEmail: recruiterEmail || userEmail,
-      recruiterName: recruiterName || 'Not specified',
-      description: description || `${title} position`
-    };
-
     const [result] = await pool.query(
-      "INSERT INTO jobs (uid, title, description, posted) VALUES (?, ?, ?, CURDATE())",
-      [uid, title, JSON.stringify(jobDescription)]
+      `INSERT INTO jobs (
+        uid, cid, lid, title, bigDescription, smallDescription, 
+        posted, job_type, mode_of_work, exp_required, 
+        salary, equity, skillids, links
+      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uid,
+        cid,
+        lid,
+        title,
+        bigDescription,
+        smallDescription,
+        job_type,
+        mode_of_work,
+        exp_required,
+        JSON.stringify(salary),
+        equity || 0,
+        JSON.stringify(skillids),
+        JSON.stringify(links || [])
+      ]
     );
 
-    res.status(201).json({ 
-      message: "Job posted successfully", 
+    res.status(201).json({
+      message: "Job posted successfully",
       jobid: result.insertId,
       job: {
         jobid: result.insertId,
         title,
-        ...jobDescription,
-        posted: new Date().toISOString().split('T')[0]
+        bigDescription,
+        smallDescription,
+        job_type,
+        mode_of_work,
+        exp_required,
+        salary,
+        equity,
+        skillids,
+        lid,
+        cid,
+        links,
+        posted: new Date().toISOString().split("T")[0]
       }
     });
+
   } catch (err) {
     console.error("Create job error:", err);
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // ✅ Get All Jobs (public)
 exports.getJobs = async (req, res) => {
