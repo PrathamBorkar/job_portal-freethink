@@ -32,25 +32,41 @@ exports.createJob = async (req, res) => {
     }
 
     const uid = userRows[0].uid;
+
     const [companyRows] = await pool.query("SELECT cid FROM recruiters WHERE uid = ?", [uid]);
+
     if (companyRows.length === 0) {
       return res.status(400).json({ message: "Company not found for this user" });
     }
+
     const cid = companyRows[0].cid;
 
-    if (
-      !title || !job_type || !mode_of_work || exp_required === undefined ||
-      !salary?.min || !salary?.max 
-    ) {
+    // Validation
+    if (!title || !job_type || !mode_of_work || exp_required === undefined || salary === undefined) {
       return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Validate location if provided - FIX: Use 'lid' instead of 'id'
+    if (lid) {
+      const [locationRows] = await pool.query("SELECT lid FROM locations WHERE lid = ?", [lid]);
+      if (locationRows.length === 0) {
+        return res.status(400).json({ message: "Invalid location selected" });
+      }
+    }
+
+    // Salary parsing (simplified since frontend sends integer)
+    const parsedSalary = parseInt(salary);
+    
+    if (isNaN(parsedSalary) || parsedSalary < 1000) {
+      return res.status(400).json({ message: "Invalid salary amount" });
     }
 
     const [result] = await pool.query(
       `INSERT INTO jobs (
         uid, cid, lid, title, bigDescription, smallDescription, 
-        posted, job_type, mode_of_work, exp_required, 
-        salary, equity, skillids, links
-      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?)`,
+        posted, job_type, mode_of_work, exp_required,
+        salary, equity, skillids
+      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
       [
         uid,
         cid,
@@ -61,14 +77,14 @@ exports.createJob = async (req, res) => {
         job_type,
         mode_of_work,
         exp_required,
-        JSON.stringify(salary),
+        parsedSalary,
         equity || 0,
-        JSON.stringify(skillids),
-        JSON.stringify(links || [])
+        JSON.stringify(skillids)
       ]
     );
 
     res.status(201).json({
+      success: true,
       message: "Job posted successfully",
       jobid: result.insertId,
       job: {
@@ -79,19 +95,23 @@ exports.createJob = async (req, res) => {
         job_type,
         mode_of_work,
         exp_required,
-        salary,
-        equity,
+        salary: parsedSalary,
+        equity: equity || 0,
         skillids,
         lid,
         cid,
-        links,
+        uid,
         posted: new Date().toISOString().split("T")[0]
       }
     });
 
   } catch (err) {
     console.error("Create job error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ 
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    });
   }
 };
 
@@ -128,40 +148,56 @@ exports.getJobById = async (req, res) => {
   }
 };
 
-// ✅ Get Recommended Jobs (for applicants)
+// 
 exports.getRecommendedJobs = async (req, res) => {
   const uid = req.user?.id;
   if (!uid) {
-    return res.status(401).json({ message: "Unauthorized: User not authenticated" });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized: User not authenticated" });
   }
 
   try {
-    // Step 1: Get the user's skills
-    const [skillsRows] = await pool.query(`
-      SELECT s.skillName 
-      FROM applicant_skills a
-      JOIN skills s ON a.skillid = s.skillid
-      WHERE a.uid = ?;
-    `, [uid]);
+    const [skillRows] = await pool.query(
+      `SELECT skillid FROM applicant_skills WHERE uid = ?`,
+      [uid]
+    );
 
-    if (skillsRows.length === 0) {
+    if (skillRows.length === 0) {
       return res.status(404).json({ message: "No skills found for the user" });
     }
 
-    const skillNames = skillsRows.map(skill => skill.skillName);
+    const skillIds = skillRows.map((row) => row.skillid);
+    const placeholders = skillIds
+      .map(() => "JSON_CONTAINS(skillids, JSON_ARRAY(?))")
+      .join(" OR ");
 
-    // Step 2: Find jobs matching any of those skills
-    const [jobs] = await pool.query(`
-      SELECT * FROM jobs
-      WHERE ${skillNames.map(() => `JSON_SEARCH(description->'$.skills', 'one', ?) IS NOT NULL`).join(" OR ")}
-      ORDER BY posted DESC
-    `, skillNames);
+    const [jobs] = await pool.query(
+      `SELECT * FROM jobs WHERE ${placeholders} ORDER BY posted DESC`,
+      skillIds
+    );
+
+    for (let job of jobs) {
+      const [locationData] = await pool.query(
+        `SELECT lname FROM locations WHERE lid = ?`,
+        [job.lid]
+      );
+
+      const [companyData] = await pool.query(
+        `SELECT name, location, status, tags, type FROM company WHERE cid = ?`,
+        [job.cid]
+      );
+
+      job.location = locationData[0]?.lname || null;
+      job.company = companyData[0] || null;
+    }
 
     res.status(200).json({ jobs });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 // ✅ Get Jobs Posted by Recruiter (by uid)
 exports.getJobsByRecruiter = async (req, res) => {

@@ -46,17 +46,22 @@ exports.getCompanyByRecruiter = async (req, res) => {
     }
 
     const [rows] = await pool.query(`
-      SELECT c.* 
-      FROM company c
-      JOIN recruiters r ON c.cid = r.cid
-      WHERE r.uid = ?
+     select cid from recruiters where uid = ? 
     `, [uid]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Company not found" });
     }
+    const cid = rows[0].cid;
 
-    res.status(200).json({ company: rows[0] });
+    const [companyRows] = await pool.query("SELECT * FROM company WHERE cid = ?", [cid]);
+
+    return res.json({
+      success: true,
+      message: "Company fetched successfully",
+      company: companyRows[0],
+    });
+
   } catch (err) {
     console.error("Error fetching company by recruiter:", err);
     res.status(500).json({ error: err.message });

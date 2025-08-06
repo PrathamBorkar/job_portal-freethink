@@ -1,6 +1,7 @@
 const pool = require("../config/db");
 
 exports.skills = async (req, res) => {
+  console.log("Fetching all skills...");
   try {
     const [rows] = await pool.query("SELECT * FROM skills");
 
@@ -16,6 +17,25 @@ exports.skills = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, skills: [] });
+  }
+};
+
+exports.skill = async (req, res) => {
+  console.log("Fetching skill by id...");
+  const { skillid } = req.params;
+  try {
+    const [row] = await pool.query("SELECT * FROM skills where skillid = ?", [
+      skillid,
+    ]);
+
+    if (!row) return res.status(401).json({ success: false, name: "No Name" });
+
+    res.json({
+      success: true,
+      name: row[0].skillName || "No name success",
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, name: "No name error" });
   }
 };
 

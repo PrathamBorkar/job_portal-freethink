@@ -10,9 +10,10 @@ exports.sendOTP = async (req, res) => {
   otpStore.set(email, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
   try {
     await sendEmail(email, "Your OTP Code", `Your OTP code is ${otp}`);
-    res.json({ message: "OTP sent to your email" });
+    console.log(otp);
+    res.json({ success: true, message: "OTP sent to your email" });
   } catch (err) {
-    res.status(500).json({ message: "Failed to send OTP" });
+    res.status(500).json({ success: false, message: "Failed to send OTP" });
   }
 };
 
@@ -31,11 +32,43 @@ exports.verifyOTP = (req, res) => {
   });
 };
 
+exports.changePassword = async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and new password are required.",
+    });
+  }
+
+  try {
+    const newHashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const [result] = await pool.query(
+      "UPDATE users SET password = ? WHERE email = ?",
+      [newHashedPassword, email]
+    );
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+    }
+
+    res
+      .status(200)
+      .json({ success: true, message: "Password updated successfully." });
+  } catch (error) {
+    console.error("Error changing password:", error.message);
+    res.status(500).json({ success: false, message: "Internal server error." });
+  }
+};
+
 exports.register = async (req, res) => {
   const conn = await pool.getConnection();
   await conn.beginTransaction();
   let token = null;
-  console.log("Registering user...");
 
   try {
     const {
@@ -119,34 +152,29 @@ exports.register = async (req, res) => {
     token = jwt.sign({ email: email, role: role }, process.env.JWT_SECRET, {
       expiresIn: "1d",
     });
-let recruiterInfo = null;
 
-if (role === 'recruiter') {
-  const [companyData] = await conn.query(`
-    SELECT c.cid, c.name AS companyName, c.location, c.description
-    FROM recruiters r
-    JOIN company c ON r.cid = c.cid
-    WHERE r.uid = ?
-  `, [uid]);
+    res.json({
+      success: true,
+      message: "Registration successful",
+      token,
+      user: {
+        uid: uid,
+        email: email,
+        name: name,
+        role: role,
+        phone: phone,
 
-  recruiterInfo = companyData[0] || null;
-}
+        ...(role == "applicant" && {
+          education: education,
+          experience: experience,
+          skillids: skillids,
+        }),
 
-res.json({
-  success: true,
-  message: "Registration successful",
-  token,
-  user: {
-    uid: uid,
-    email: email,
-    name: name,
-    role: role,
-    phone: phone,
-    ...(recruiterInfo && {
-      company: recruiterInfo
-    })
-  }
-});
+        ...(role == "recruiter" && {
+          company: company.name,
+        }),
+      },
+    });
   } catch (err) {
     await conn.rollback();
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
@@ -174,6 +202,10 @@ exports.login = async (req, res) => {
     ]);
 
     const user = rows[0];
+    let appData;
+    let eduData;
+    let expData;
+    let appSkillData = [];
 
     if (!user) {
       return res
@@ -189,66 +221,11 @@ exports.login = async (req, res) => {
     }
 
     token = jwt.sign(
-      { email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
-
-    res.json({
-      message: "Login successful",
-      token,
-      user: {
-        uid: user.uid,
+      {
+        id: user.uid, // ← ADD THIS LINE (use whatever your user ID field is called)
         email: user.email,
-        name: user.name,
         role: user.role,
-        phone: user.phone,
-      }
-      ,
-
-      
-    });
-  } catch (err) {
-    if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired token", token, user: {} });
-    }
-    res.status(500).json({
-      message: err.message,
-      token,
-      user: {},
-    });
-  }
-};
-exports.login = async (req, res) => {
-  const { email, password } = req.body;
-  let token = null;
-  try {
-    const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [
-      email,
-    ]);
-
-    const user = rows[0];
-
-    if (!user) {
-      return res
-        .status(401)
-        .json({ message: "Invalid email", token, user: {} });
-    }
-
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      return res
-        .status(401)
-        .json({ message: "Invalid password", token, user: {} });
-    }
-
-    token = jwt.sign(
-
-      {  id: user.uid,        // ← ADD THIS LINE (use whatever your user ID field is called)
-    email: user.email,
-    role: user.role  },
+      },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
@@ -267,6 +244,34 @@ exports.login = async (req, res) => {
       );
 
       recruiterInfo = companyData[0] || null;
+    } else {
+      const [appRow] = await pool.query(
+        "SELECT employmentStatus, jobType, preferredLocation, availability, linkedIn, portfolioWebsite FROM applicants WHERE uid = ?",
+        [user.uid]
+      );
+
+      const [eduRow] = await pool.query(
+        "SELECT * FROM education WHERE uid = ?",
+        [user.uid]
+      );
+
+      const [expRow] = await pool.query(
+        "SELECT * FROM experience WHERE uid = ?",
+        [user.uid]
+      );
+
+      const [appSkillRows] = await pool.query(
+        "SELECT skillid FROM applicant_skills WHERE uid = ?",
+        [user.uid]
+      );
+
+      appData = appRow[0];
+      eduData = eduRow[0];
+      expData = expRow[0];
+
+      for (const appSkill of appSkillRows) {
+        appSkillData.push(appSkill.skillid);
+      }
     }
 
     res.json({
@@ -278,6 +283,34 @@ exports.login = async (req, res) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
+        gender: user?.gender,
+        dob: user?.dob,
+
+        ...(user.role == "applicant" && {
+          employmentStatus: appData.employmentStatus,
+          jobType: appData.jobType,
+          preferredLocation: appData.preferredLocation,
+          availability: appData.availability,
+          linkedIn: appData.linkedIn,
+          portfolioWebsite: appData.portfolioWebsite,
+
+          degree: eduData.degree,
+          institution: eduData.institution,
+          field_of_study: eduData.field_of_study,
+          start_date_degree: eduData.start_date_degree,
+          end_date_degree: eduData.end_date_degree,
+          gradeValue: eduData.grade_value,
+          gradeType: eduData.grade_type,
+          education_level: eduData.education_level,
+
+          expName: expData.expName,
+          expRole: expData.role,
+          expStart: expData.start,
+          expEnd: expData.end,
+
+          skillids: appSkillData,
+        }),
+
         ...(recruiterInfo && {
           company: recruiterInfo,
         }),
@@ -294,38 +327,5 @@ exports.login = async (req, res) => {
       token,
       user: {},
     });
-  }
-};
-
-exports.changePassword = async (req, res) => {
-  const { email, newPassword } = req.body;
-
-  if (!email || !newPassword) {
-    return res.status(400).json({
-      success: false,
-      message: "Email and new password are required.",
-    });
-  }
-
-  try {
-    const newHashedPassword = await bcrypt.hash(newPassword, 10);
-
-    const [result] = await pool.query(
-      "UPDATE users SET password = ? WHERE email = ?",
-      [newHashedPassword, email]
-    );
-
-    if (result.affectedRows === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found." });
-    }
-
-    res
-      .status(200)
-      .json({ success: true, message: "Password updated successfully." });
-  } catch (error) {
-    console.error("Error changing password:", error.message);
-    res.status(500).json({ success: false, message: "Internal server error." });
   }
 };
