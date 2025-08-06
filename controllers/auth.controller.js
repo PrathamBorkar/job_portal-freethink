@@ -10,6 +10,7 @@ exports.sendOTP = async (req, res) => {
   otpStore.set(email, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
   try {
     await sendEmail(email, "Your OTP Code", `Your OTP code is ${otp}`);
+    console.log(otp);
     res.json({ success: true, message: "OTP sent to your email" });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to send OTP" });
@@ -152,25 +153,6 @@ exports.register = async (req, res) => {
       expiresIn: "1d",
     });
 
-    if (role === "recruiter") {
-      const [companyData] = await conn.query(
-        `
-
-    SELECT c.cid, c.name AS companyName, c.location, c.description
-
-    FROM recruiters r
-
-    JOIN company c ON r.cid = c.cid
-
-    WHERE r.uid = ?
-
-  `,
-        [uid]
-      );
-
-      recruiterInfo = companyData[0] || null;
-    }
-
     res.json({
       success: true,
       message: "Registration successful",
@@ -182,8 +164,14 @@ exports.register = async (req, res) => {
         role: role,
         phone: phone,
 
-        ...(recruiterInfo && {
-          company: recruiterInfo,
+        ...(role == "applicant" && {
+          education: education,
+          experience: experience,
+          skillids: skillids,
+        }),
+
+        ...(role == "recruiter" && {
+          company: company.name,
         }),
       },
     });
@@ -214,6 +202,10 @@ exports.login = async (req, res) => {
     ]);
 
     const user = rows[0];
+    let appData;
+    let eduData;
+    let expData;
+    let appSkillData = [];
 
     if (!user) {
       return res
@@ -252,6 +244,34 @@ exports.login = async (req, res) => {
       );
 
       recruiterInfo = companyData[0] || null;
+    } else {
+      const [appRow] = await pool.query(
+        "SELECT employmentStatus, jobType, preferredLocation, availability, linkedIn, portfolioWebsite FROM applicants WHERE uid = ?",
+        [user.uid]
+      );
+
+      const [eduRow] = await pool.query(
+        "SELECT * FROM education WHERE uid = ?",
+        [user.uid]
+      );
+
+      const [expRow] = await pool.query(
+        "SELECT * FROM experience WHERE uid = ?",
+        [user.uid]
+      );
+
+      const [appSkillRows] = await pool.query(
+        "SELECT skillid FROM applicant_skills WHERE uid = ?",
+        [user.uid]
+      );
+
+      appData = appRow[0];
+      eduData = eduRow[0];
+      expData = expRow[0];
+
+      for (const appSkill of appSkillRows) {
+        appSkillData.push(appSkill.skillid);
+      }
     }
 
     res.json({
@@ -263,6 +283,34 @@ exports.login = async (req, res) => {
         name: user.name,
         role: user.role,
         phone: user.phone,
+        gender: user?.gender,
+        dob: user?.dob,
+
+        ...(user.role == "applicant" && {
+          employmentStatus: appData.employmentStatus,
+          jobType: appData.jobType,
+          preferredLocation: appData.preferredLocation,
+          availability: appData.availability,
+          linkedIn: appData.linkedIn,
+          portfolioWebsite: appData.portfolioWebsite,
+
+          degree: eduData.degree,
+          institution: eduData.institution,
+          field_of_study: eduData.field_of_study,
+          start_date_degree: eduData.start_date_degree,
+          end_date_degree: eduData.end_date_degree,
+          gradeValue: eduData.grade_value,
+          gradeType: eduData.grade_type,
+          education_level: eduData.education_level,
+
+          expName: expData.expName,
+          expRole: expData.role,
+          expStart: expData.start,
+          expEnd: expData.end,
+
+          skillids: appSkillData,
+        }),
+
         ...(recruiterInfo && {
           company: recruiterInfo,
         }),

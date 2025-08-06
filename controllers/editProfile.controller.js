@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { skills } = require("./skill.controller");
 
 // ------------------ GET FULL PROFILE ------------------
 exports.getUserProfile = async (req, res) => {
@@ -140,5 +141,161 @@ exports.patchUserProfile = async (req, res) => {
     res
       .status(500)
       .json({ error: "Failed to update profile", details: err.message });
+  }
+};
+
+//new update controllers
+
+exports.patchAdditionalData = async (req, res) => {
+  const { additionalData } = req.body;
+
+  if (!additionalData || !additionalData.uid) {
+    return res.status(400).json({ error: "Missing 'additionalData' or 'uid'" });
+  }
+
+  const uid = additionalData.uid;
+
+  try {
+    const userFields = [];
+    const userValues = [];
+
+    if (additionalData.gender && additionalData.gender !== "") {
+      userFields.push("gender = ?");
+      userValues.push(additionalData.gender);
+    }
+
+    if (additionalData.dob && additionalData.dob !== "") {
+      userFields.push("dob = ?");
+      userValues.push(additionalData.dob);
+    }
+
+    if (userFields.length > 0) {
+      userValues.push(uid);
+      const userQuery = `UPDATE users SET ${userFields.join(
+        ", "
+      )} WHERE uid = ?`;
+      await pool.query(userQuery, userValues);
+    }
+
+    const applicantFields = [];
+    const applicantValues = [];
+
+    const fieldsToCheck = [
+      "employmentStatus",
+      "jobType",
+      "preferredLocation",
+      "availability",
+      "linkedIn",
+      "portfolioWebsite",
+    ];
+
+    fieldsToCheck.forEach((field) => {
+      if (additionalData[field] && additionalData[field] !== "") {
+        applicantFields.push(`${field} = ?`);
+        applicantValues.push(additionalData[field]);
+      }
+    });
+
+    if (applicantFields.length > 0) {
+      applicantValues.push(uid);
+      const applicantQuery = `UPDATE applicants SET ${applicantFields.join(
+        ", "
+      )} WHERE uid = ?`;
+      await pool.query(applicantQuery, applicantValues);
+    }
+
+    res.status(200).json({ message: "Additional data updated successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.patchEducationalData = async (req, res) => {
+  const { educationalData } = req.body;
+
+  if (!educationalData || !educationalData.uid) {
+    return res
+      .status(400)
+      .json({ error: "Missing 'educationalData' or 'uid'" });
+  }
+
+  const uid = educationalData.uid;
+
+  try {
+    const fields = [];
+    const values = [];
+
+    const fieldMap = {
+      degree: "degree",
+      institution: "institution",
+      field_of_study: "field_of_study",
+      start_date_degree: "start_date_degree",
+      end_date_degree: "end_date_degree",
+      grade_value: "grade_value",
+      grade_type: "grade_type",
+      education_level: "education_level",
+    };
+
+    for (const key in fieldMap) {
+      const value = educationalData[key];
+      if (value !== undefined && value !== "") {
+        fields.push(`${fieldMap[key]} = ?`);
+        values.push(value);
+      }
+    }
+
+    if (fields.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "No valid educational fields provided for update" });
+    }
+
+    values.push(uid);
+
+    const query = `UPDATE education SET ${fields.join(", ")} WHERE uid = ?`;
+    await pool.query(query, values);
+
+    res.status(200).json({ message: "Educational data updated successfully" });
+  } catch (error) {
+    console.error("Error updating educational data:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+exports.patchSkillData = async (req, res) => {
+  const { skillData } = req.body;
+
+  if (!skillData || !Array.isArray(skillData.skills) || !skillData.uid) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Invalid request body. Expected 'skillData' with 'uid' and 'skills' array.",
+    });
+  }
+
+  try {
+    await pool.query("DELETE FROM applicant_skills WHERE uid = ?", [
+      skillData.uid,
+    ]);
+
+    for (const [skillId] of skillData.skills) {
+      await pool.query(
+        "INSERT INTO applicant_skills (uid, skillid) VALUES (?, ?)",
+        [skillData.uid, skillId]
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Skills updated successfully.",
+    });
+  } catch (error) {
+    console.error("Database error in patchSkillData:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while updating skills.",
+      error: error.message,
+    });
   }
 };

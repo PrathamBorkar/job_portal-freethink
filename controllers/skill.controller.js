@@ -19,6 +19,24 @@ exports.skills = async (req, res) => {
   }
 };
 
+exports.skill = async (req, res) => {
+  const { skillid } = req.params;
+  try {
+    const [row] = await pool.query("SELECT * FROM skills where skillid = ?", [
+      skillid,
+    ]);
+
+    if (!row) return res.status(401).json({ success: false, name: "No Name" });
+
+    res.json({
+      success: true,
+      name: row[0].skillName || "No name success",
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, name: "No name error" });
+  }
+};
+
 exports.countApplicantSkills = async (req, res) => {
   let skillJSON = {};
   let topSkills = [];

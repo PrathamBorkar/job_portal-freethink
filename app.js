@@ -9,6 +9,7 @@ const companyRoutes = require("./routes/company.routes");
 const rootRoutes = require("./routes/root.routes");
 const resumeRoutes = require("./routes/resume.routes");
 const jobsRoutes = require("./routes/jobs.routes");
+const editProfile = require("./routes/editprofile.routes");
 
 const app = express();
 app.use(
@@ -25,6 +26,7 @@ app.use("/skills", skillRoutes);
 app.use("/company", companyRoutes);
 app.use("/resume", resumeRoutes);
 app.use("/jobs", jobsRoutes);
+app.use("/edit-profile", editProfile);
 
 setInterval(updatePopularityScores, 30 * 60 * 1000);
 

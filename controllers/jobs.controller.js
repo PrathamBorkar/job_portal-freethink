@@ -109,7 +109,6 @@ exports.getJobById = async (req, res) => {
   }
 };
 
-// ✅ Get Recommended Jobs (for applicants)
 exports.getRecommendedJobs = async (req, res) => {
   const uid = req.user?.id;
   if (!uid) {
@@ -119,34 +118,39 @@ exports.getRecommendedJobs = async (req, res) => {
   }
 
   try {
-    // Step 1: Get the user's skills
-    const [skillsRows] = await pool.query(
-      `
-      SELECT s.skillName 
-      FROM applicant_skills a
-      JOIN skills s ON a.skillid = s.skillid
-      WHERE a.uid = ?;
-    `,
+    const [skillRows] = await pool.query(
+      `SELECT skillid FROM applicant_skills WHERE uid = ?`,
       [uid]
     );
 
-    if (skillsRows.length === 0) {
+    if (skillRows.length === 0) {
       return res.status(404).json({ message: "No skills found for the user" });
     }
 
-    const skillNames = skillsRows.map((skill) => skill.skillName);
+    const skillIds = skillRows.map((row) => row.skillid);
+    const placeholders = skillIds
+      .map(() => "JSON_CONTAINS(skillids, JSON_ARRAY(?))")
+      .join(" OR ");
 
-    // Step 2: Find jobs matching any of those skills
     const [jobs] = await pool.query(
-      `
-      SELECT * FROM jobs
-      WHERE ${skillNames
-        .map(() => `JSON_SEARCH(description->'$.skills', 'one', ?) IS NOT NULL`)
-        .join(" OR ")}
-      ORDER BY posted DESC
-    `,
-      skillNames
+      `SELECT * FROM jobs WHERE ${placeholders} ORDER BY posted DESC`,
+      skillIds
     );
+
+    for (let job of jobs) {
+      const [locationData] = await pool.query(
+        `SELECT lname FROM locations WHERE lid = ?`,
+        [job.lid]
+      );
+
+      const [companyData] = await pool.query(
+        `SELECT name, location, status, tags, type FROM company WHERE cid = ?`,
+        [job.cid]
+      );
+
+      job.location = locationData[0]?.lname || null;
+      job.company = companyData[0] || null;
+    }
 
     res.status(200).json({ jobs });
   } catch (err) {
