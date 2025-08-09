@@ -9,6 +9,8 @@ const rootRoutes = require("./routes/root.routes");
 const resumeRoutes = require("./routes/resume.routes");
 const jobsRoutes = require("./routes/jobs.routes");
 const locationRoutes = require("./routes/location.routes");
+const applicationRoutes = require("./routes/application.routes");
+const editProfileRoutes = require("./routes/editprofile.routes");
 
 const app = express();
 
@@ -28,6 +30,8 @@ app.use("/company", companyRoutes);
 app.use("/resume", resumeRoutes);
 app.use("/jobs",jobsRoutes);
 app.use("/location", locationRoutes);
+app.use("/application", applicationRoutes);
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () =>
