@@ -1,62 +1,47 @@
 const e = require("express");
 const pool = require("../config/db");
 
-// ✅ Create Job (for recruiter)
 exports.createJob = async (req, res) => {
+  console.log("Creating job with data:", req.body);
   try {
     const {
+      uid,
       title,
-      jobType,
-      modeOfWork,
-      experienceRequired,
+      bigDescription,
+      smallDescription,
+      job_type,
+      mode_of_work,
+      exp_required,
       salary,
-      location,
-      skills,
-      recruiterEmail,
-      recruiterName,
-      description,
+      skillids,
+      equity,
+      lid,
+      cid,
+      posted,
     } = req.body;
 
-    const userEmail = req.user?.email;
-
-    if (!userEmail) {
-      return res
-        .status(401)
-        .json({ message: "Unauthorized: Recruiter not authenticated" });
-    }
-
-    // Get user ID from database using email
-    const [userRows] = await pool.query(
-      "SELECT uid FROM users WHERE email = ?",
-      [userEmail]
-    );
-
-    if (userRows.length === 0) {
-      return res.status(401).json({ message: "User not found" });
-    }
-
-    const uid = userRows[0].uid;
-
-    if (!title) {
-      return res.status(400).json({ message: "Title is required" });
-    }
-
-    // ✅ Create comprehensive description object with all job details
-    const jobDescription = {
-      jobType: jobType || "Full-time",
-      modeOfWork: modeOfWork || "Office",
-      experienceRequired: experienceRequired || "0-1 years",
-      salary: salary || "Not specified",
-      location: location || "Not specified",
-      skills: skills || [],
-      recruiterEmail: recruiterEmail || userEmail,
-      recruiterName: recruiterName || "Not specified",
-      description: description || `${title} position`,
-    };
+    const newSalary = salary.split("L" || "K")[0];
 
     const [result] = await pool.query(
-      "INSERT INTO jobs (uid, title, description, posted) VALUES (?, ?, ?, CURDATE())",
-      [uid, title, JSON.stringify(jobDescription)]
+      `INSERT INTO jobs (
+        uid, title, bigDescription, posted, job_type, mode_of_work, exp_required, salary, skillids, equity,lid, cid, smallDescription 
+
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        uid,
+        title,
+        bigDescription,
+        posted,
+        job_type,
+        mode_of_work,
+        exp_required,
+        newSalary,
+        JSON.stringify(skillids),
+        equity || 0,
+        lid,
+        cid,
+        smallDescription,
+      ]
     );
 
     res.status(201).json({
@@ -65,7 +50,16 @@ exports.createJob = async (req, res) => {
       job: {
         jobid: result.insertId,
         title,
-        ...jobDescription,
+        bigDescription,
+        smallDescription,
+        job_type,
+        mode_of_work,
+        exp_required,
+        salary,
+        equity,
+        skillids,
+        lid,
+        cid,
         posted: new Date().toISOString().split("T")[0],
       },
     });
@@ -111,38 +105,51 @@ exports.getJobById = async (req, res) => {
 
 exports.getRecommendedJobs = async (req, res) => {
   const uid = req.user?.id;
+
   if (!uid) {
+    console.log("Unauthorized: No user ID found in request.");
     return res
       .status(401)
       .json({ message: "Unauthorized: User not authenticated" });
   }
 
   try {
+    console.log(`Fetching skills for user: ${uid}`);
     const [skillRows] = await pool.query(
       `SELECT skillid FROM applicant_skills WHERE uid = ?`,
       [uid]
     );
 
     if (skillRows.length === 0) {
+      console.log("No skills found for the user.");
       return res.status(404).json({ message: "No skills found for the user" });
     }
 
     const skillIds = skillRows.map((row) => row.skillid);
+    console.log("User skill IDs:", skillIds);
+
     const placeholders = skillIds
       .map(() => "JSON_CONTAINS(skillids, JSON_ARRAY(?))")
       .join(" OR ");
 
+    console.log("Constructed SQL condition for skills:", placeholders);
+
+    console.log("Fetching jobs matching user skills...");
     const [jobs] = await pool.query(
       `SELECT * FROM jobs WHERE ${placeholders} ORDER BY posted DESC`,
       skillIds
     );
 
+    console.log(`Found ${jobs.length} job(s) matching the skills.`);
+
     for (let job of jobs) {
+      console.log(`Fetching location for job with lid: ${job.lid}`);
       const [locationData] = await pool.query(
         `SELECT lname FROM locations WHERE lid = ?`,
         [job.lid]
       );
 
+      console.log(`Fetching company info for cid: ${job.cid}`);
       const [companyData] = await pool.query(
         `SELECT name, location, status, tags, type FROM company WHERE cid = ?`,
         [job.cid]
@@ -152,9 +159,11 @@ exports.getRecommendedJobs = async (req, res) => {
       job.company = companyData[0] || null;
     }
 
+    console.log("Final recommended jobs prepared.");
     res.status(200).json({ jobs });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error in getRecommendedJobs:", err);
+    res.status(500).json({ error: "Server error: " + err.message });
   }
 };
 

@@ -23,6 +23,8 @@ exports.companies = async (req, res) => {
   }
 };
 
+//get comapany via recid
+
 exports.getCompanyByRecruiter = async (req, res) => {
   console.log("Fetching company by recruite hitted r...");
   const email = req.user?.email;
