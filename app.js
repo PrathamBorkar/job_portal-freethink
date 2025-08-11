@@ -10,6 +10,8 @@ const rootRoutes = require("./routes/root.routes");
 const resumeRoutes = require("./routes/resume.routes");
 const jobsRoutes = require("./routes/jobs.routes");
 const editProfile = require("./routes/editprofile.routes");
+const locationRoutes = require("./routes/location.routes");
+const applicationRoutes = require("./routes/application.routes");
 
 const app = express();
 app.use(
@@ -27,6 +29,8 @@ app.use("/company", companyRoutes);
 app.use("/resume", resumeRoutes);
 app.use("/jobs", jobsRoutes);
 app.use("/edit-profile", editProfile);
+app.use("/location", locationRoutes);
+app.use("/application", applicationRoutes);
 
 setInterval(updatePopularityScores, 30 * 60 * 1000);
 

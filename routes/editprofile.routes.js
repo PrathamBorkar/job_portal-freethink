@@ -9,5 +9,6 @@ const profileController = require("../controllers/editProfile.controller");
 router.patch("/additional-details", profileController.patchAdditionalData);
 router.patch("/education", profileController.patchEducationalData);
 router.patch("/skills", profileController.patchSkillData);
+router.patch("/recruiter", profileController.patchRecruiterData);
 
 module.exports = router;

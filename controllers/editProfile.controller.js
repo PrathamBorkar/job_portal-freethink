@@ -299,3 +299,93 @@ exports.patchSkillData = async (req, res) => {
     });
   }
 };
+
+exports.patchRecruiterData = async (req, res) => {
+  const { editData } = req.body;
+
+  console.log("Incoming editData:", editData); // 🔍 Log full request body
+
+  if (!editData || !editData.cid) {
+    console.warn("Missing 'editData' or 'cid'");
+    return res.status(400).json({ error: "Missing 'editData' or 'cid'" });
+  }
+
+  const cid = editData.cid;
+
+  try {
+    const companyFields = [];
+    const companyValues = [];
+
+    if (editData.name && editData.name.trim() !== "") {
+      companyFields.push("name = ?");
+      companyValues.push(editData.name);
+    }
+
+    if (editData.location && editData.location.trim() !== "") {
+      companyFields.push("location = ?");
+      companyValues.push(editData.location);
+    }
+
+    if (editData.description && editData.description.trim() !== "") {
+      companyFields.push("description = ?");
+      companyValues.push(editData.description);
+    }
+
+    if (editData.companySize && editData.companySize.trim() !== "") {
+      companyFields.push("companySize = ?");
+      companyValues.push(editData.companySize);
+    }
+
+    if (editData.status && editData.status.trim() !== "") {
+      companyFields.push("status = ?");
+      companyValues.push(editData.status);
+    }
+
+    if (editData.tags && Array.isArray(editData.tags)) {
+      companyFields.push("tags = ?");
+      companyValues.push(JSON.stringify(editData.tags));
+    }
+
+    if (editData.type && Array.isArray(editData.type)) {
+      companyFields.push("type = ?");
+      companyValues.push(JSON.stringify(editData.type));
+    }
+
+    if (editData.CEO && editData.CEO.trim() !== "") {
+      companyFields.push("CEO = ?");
+      companyValues.push(editData.CEO);
+    }
+
+    if (editData.companyEmail && editData.companyEmail.trim() !== "") {
+      companyFields.push("companyEmail = ?");
+      companyValues.push(editData.companyEmail);
+    }
+
+    if (editData.links && Array.isArray(editData.links)) {
+      companyFields.push("links = ?");
+      companyValues.push(JSON.stringify(editData.links));
+    }
+
+    if (companyFields.length > 0) {
+      const query = `UPDATE company SET ${companyFields.join(
+        ", "
+      )} WHERE cid = ?`;
+      companyValues.push(cid);
+
+      // 🔍 Log the final SQL query and values
+      console.log("Final SQL Query:", query);
+      console.log("Query Values:", companyValues);
+
+      await pool.query(query, companyValues);
+    } else {
+      console.log("No fields provided to update.");
+    }
+
+    res
+      .status(200)
+      .json({ success: true, message: "Recruiter data updated successfully" });
+  } catch (error) {
+    console.error("Error updating recruiter data:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};

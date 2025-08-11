@@ -235,7 +235,7 @@ exports.login = async (req, res) => {
     if (user.role === "recruiter") {
       const [companyData] = await pool.query(
         `
-        SELECT c.cid AS cid, c.name AS companyName, c.location AS location , c.description AS description
+        SELECT c.*
         FROM recruiters r
         JOIN company c ON r.cid = c.cid
         WHERE r.uid = ?

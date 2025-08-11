@@ -1,50 +1,109 @@
 const e = require("express");
 const pool = require("../config/db");
 
+// ✅ Create Job (for recruiter)
 exports.createJob = async (req, res) => {
   console.log("Creating job with data:", req.body);
   try {
     const {
-      uid,
       title,
-      bigDescription,
-      smallDescription,
       job_type,
       mode_of_work,
       exp_required,
       salary,
-      skillids,
       equity,
       lid,
-      cid,
-      posted,
+      skillids,
+      smallDescription,
+      bigDescription,
+      links,
     } = req.body;
 
-    const newSalary = salary.split("L" || "K")[0];
+    const userEmail = req.user?.email;
+
+    if (!userEmail) {
+      return res
+        .status(401)
+        .json({ message: "Unauthorized: Recruiter not authenticated" });
+    }
+
+    const [userRows] = await pool.query(
+      "SELECT uid FROM users WHERE email = ?",
+      [userEmail]
+    );
+
+    if (userRows.length === 0) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    const uid = userRows[0].uid;
+
+    const [companyRows] = await pool.query(
+      "SELECT cid FROM recruiters WHERE uid = ?",
+      [uid]
+    );
+
+    if (companyRows.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Company not found for this user" });
+    }
+
+    const cid = companyRows[0].cid;
+
+    // Validation
+    if (
+      !title ||
+      !job_type ||
+      !mode_of_work ||
+      exp_required === undefined ||
+      salary === undefined
+    ) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Validate location if provided - FIX: Use 'lid' instead of 'id'
+    if (lid) {
+      const [locationRows] = await pool.query(
+        "SELECT lid FROM locations WHERE lid = ?",
+        [lid]
+      );
+      if (locationRows.length === 0) {
+        return res.status(400).json({ message: "Invalid location selected" });
+      }
+    }
+
+    // Salary parsing (simplified since frontend sends integer)
+    const parsedSalary = parseInt(salary);
+
+    if (isNaN(parsedSalary) || parsedSalary < 1000) {
+      return res.status(400).json({ message: "Invalid salary amount" });
+    }
 
     const [result] = await pool.query(
       `INSERT INTO jobs (
-        uid, title, bigDescription, posted, job_type, mode_of_work, exp_required, salary, skillids, equity,lid, cid, smallDescription 
-
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        uid, cid, lid, title, bigDescription, smallDescription, 
+        posted, job_type, mode_of_work, exp_required,
+        salary, equity, skillids
+      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
       [
         uid,
+        cid,
+        lid,
         title,
         bigDescription,
-        posted,
+        smallDescription,
         job_type,
         mode_of_work,
         exp_required,
-        newSalary,
-        JSON.stringify(skillids),
+        parsedSalary,
         equity || 0,
-        lid,
-        cid,
-        smallDescription,
+        JSON.stringify(skillids),
       ]
     );
 
     res.status(201).json({
+      success: true,
       message: "Job posted successfully",
       jobid: result.insertId,
       job: {
@@ -55,17 +114,25 @@ exports.createJob = async (req, res) => {
         job_type,
         mode_of_work,
         exp_required,
-        salary,
-        equity,
+        salary: parsedSalary,
+        equity: equity || 0,
         skillids,
         lid,
         cid,
+        uid,
         posted: new Date().toISOString().split("T")[0],
       },
     });
   } catch (err) {
     console.error("Create job error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error:
+        process.env.NODE_ENV === "development"
+          ? err.message
+          : "Something went wrong",
+    });
   }
 };
 

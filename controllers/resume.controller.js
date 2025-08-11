@@ -8,47 +8,16 @@ function getResumeUrl(fileName) {
 
 exports.uploadResume = async (req, res) => {
   try {
-    console.log("Received upload request for UID:", req.params.uid);
-
     const { uid } = req.params;
-
     const file = req.file;
+
     if (!file) {
-      console.error("No file uploaded.");
       return res
         .status(400)
         .json({ success: false, message: "No file uploaded" });
     }
 
-    console.log("File received:", file.originalname);
-
     const fileName = `resume-${uid}-${Date.now()}.pdf`;
-    console.log("File name for Supabase storage:", fileName);
-
-    const { data, error } = await supabase.storage
-      .from("frethink")
-      .upload(fileName, file.buffer, {
-        contentType: file.mimetype,
-        upsert: true,
-      });
-    if (error) {
-      console.error("Detailed Supabase Upload Error:", {
-        message: error.message,
-        details: error,
-        fileName: fileName,
-        fileSize: file.buffer.length,
-      });
-      return res.status(500).json({
-        success: false,
-        message: "Upload failed",
-        error: error.message,
-      });
-    }
-
-    console.log("File uploaded successfully to Supabase:", data);
-
-    const resumeUrl = getResumeUrl(fileName);
-    console.log("Generated resume URL:", resumeUrl);
 
     const [rows] = await pool.execute(
       "SELECT resume_url FROM applicants WHERE uid = ?",
@@ -56,26 +25,46 @@ exports.uploadResume = async (req, res) => {
     );
 
     if (rows.length === 0) {
-      console.error("Applicant not found for UID:", uid);
       return res
         .status(404)
         .json({ success: false, message: "Applicant not found" });
     }
 
-    console.log("Applicant found. Updating resume URL in database...");
+    const existingUrl = rows[0].resume_url;
+
+    if (existingUrl) {
+      const parts = existingUrl.split("/");
+      const existingFileName = parts[parts.length - 1];
+
+      await supabase.storage.from("frethink").remove([existingFileName]);
+    }
+
+    const { data, error } = await supabase.storage
+      .from("frethink")
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true,
+      });
+
+    if (error) {
+      return res.status(500).json({
+        success: false,
+        message: "Upload failed",
+        error: error.message,
+      });
+    }
+
+    const resumeUrl = getResumeUrl(fileName);
 
     await pool.execute("UPDATE applicants SET resume_url = ? WHERE uid = ?", [
       resumeUrl,
       uid,
     ]);
 
-    console.log("Database updated successfully.");
-
     res
       .status(200)
       .json({ success: true, message: "Resume uploaded", resumeUrl });
   } catch (err) {
-    console.error("Error uploading resume:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
