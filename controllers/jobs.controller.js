@@ -6,17 +6,23 @@ exports.createJob = async (req, res) => {
   console.log("Creating job with data:", req.body);
   try {
     const {
+      lid,
       title,
+      bigDescription,
+      smallDescription,
       job_type,
       mode_of_work,
-      exp_required,
-      salary,
-      equity,
-      lid,
+      experience_min,
+      experience_max,
+      salary_min,
+      salary_max,
+      equity_min,
+      equity_max,
+      opening,
+      qualification,
+      job_markets,
+      job_roles,
       skillids,
-      smallDescription,
-      bigDescription,
-      links,
     } = req.body;
 
     const userEmail = req.user?.email;
@@ -56,8 +62,10 @@ exports.createJob = async (req, res) => {
       !title ||
       !job_type ||
       !mode_of_work ||
-      exp_required === undefined ||
-      salary === undefined
+      experience_min === undefined ||
+      experience_max === undefined ||
+      salary_min === undefined ||
+      salary_max === undefined
     ) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -73,19 +81,29 @@ exports.createJob = async (req, res) => {
       }
     }
 
-    // Salary parsing (simplified since frontend sends integer)
-    const parsedSalary = parseInt(salary);
-
-    if (isNaN(parsedSalary) || parsedSalary < 1000) {
-      return res.status(400).json({ message: "Invalid salary amount" });
-    }
-
     const [result] = await pool.query(
       `INSERT INTO jobs (
-        uid, cid, lid, title, bigDescription, smallDescription, 
-        posted, job_type, mode_of_work, exp_required,
-        salary, equity, skillids
-      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
+        uid, 
+        cid, 
+        lid,
+      title,
+      bigDescription,
+      smallDescription,
+      job_type,
+      mode_of_work,
+      experience_min,
+      experience_max,
+      salary_min,
+      salary_max,
+      equity_min,
+      equity_max,
+      opening,
+      qualification,
+      job_markets,
+      job_roles,
+      skillids,
+        posted
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
       [
         uid,
         cid,
@@ -95,9 +113,16 @@ exports.createJob = async (req, res) => {
         smallDescription,
         job_type,
         mode_of_work,
-        exp_required,
-        parsedSalary,
-        equity || 0,
+        experience_min,
+        experience_max,
+        salary_min,
+        salary_max,
+        equity_min,
+        equity_max,
+        opening,
+        qualification,
+        JSON.stringify(job_markets),
+        JSON.stringify(job_roles),
         JSON.stringify(skillids),
       ]
     );
@@ -108,18 +133,25 @@ exports.createJob = async (req, res) => {
       jobid: result.insertId,
       job: {
         jobid: result.insertId,
+        uid,
+        cid,
+        lid,
         title,
         bigDescription,
         smallDescription,
         job_type,
         mode_of_work,
-        exp_required,
-        salary: parsedSalary,
-        equity: equity || 0,
+        experience_min,
+        experience_max,
+        salary_min,
+        salary_max,
+        equity_min,
+        equity_max,
+        opening,
+        qualification,
+        job_markets,
+        job_roles,
         skillids,
-        lid,
-        cid,
-        uid,
         posted: new Date().toISOString().split("T")[0],
       },
     });
@@ -147,13 +179,17 @@ exports.updateOneJob = async (req, res) => {
       popularity_score,
       job_type,
       mode_of_work,
-      exp_required,
-      salary,
+      salary_min,
+      salary_max,
+      equity_min,
+      equity_max,
+      experience_min,
+      experience_max,
       skillids,
-      equity,
       lid,
       cid,
       smallDescription,
+      qualification,
       opening,
     } = req.body;
 
@@ -171,13 +207,17 @@ exports.updateOneJob = async (req, res) => {
         popularity_score = ?,
         job_type = ?,
         mode_of_work = ?,
-        exp_required = ?,
-        salary = ?,
+        experience_min = ?,
+        experience_max  = ?,
+        salary_min  = ?,
+        salary_max  = ?,
+        equity_min = ?,
+        equity_max = ?,
         skillids = ?,
-        equity = ?,
         lid = ?,
         cid = ?,
         smallDescription = ?,
+        qualification = ?,
         opening = ?
       WHERE jobid = ?`,
       [
@@ -188,13 +228,17 @@ exports.updateOneJob = async (req, res) => {
         popularity_score,
         job_type,
         mode_of_work,
-        exp_required,
-        salary,
+        experience_min,
+        experience_max,
+        salary_min,
+        salary_max,
+        equity_min,
+        equity_max,
         skillidsJson,
-        equity,
         lid,
         cid,
         smallDescription,
+        qualification,
         opening,
         jobid,
       ]
@@ -481,9 +525,8 @@ exports.deleteJob = async (req, res) => {
   }
 };
 
-// In your jobs.controller.js file
 exports.getTotalJobsByRecruiter = async (req, res) => {
-  console.log("Fetching total jobs by recruiter...");
+  console.log("Fetching job statistics by recruiter...");
   const email = req.user?.email;
 
   if (!email) {
@@ -505,27 +548,131 @@ exports.getTotalJobsByRecruiter = async (req, res) => {
 
     const uid = userRows[0].uid;
 
-    // Get total jobs count for this recruiter
-    const [totalRows] = await pool.query(
+    // Get recruiter's job statistics
+    const [recruiterStats] = await pool.query(
       `
-      SELECT COUNT(*) as total 
+      SELECT 
+        COUNT(*) as total_jobs,
+        COUNT(*) as active_jobs, -- All jobs are active for now
+        COUNT(CASE WHEN posted >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN 1 END) as jobs_this_month,
+        COUNT(CASE WHEN posted >= DATE_SUB(CURDATE(), INTERVAL 2 MONTH) AND posted < DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN 1 END) as jobs_last_month
       FROM jobs 
       WHERE uid = ?
     `,
       [uid]
     );
 
-    // Since there's no status column, we'll use the total for all categories
-    const stats = {
-      total: totalRows[0].total,
-      active: totalRows[0].total, // All jobs are considered active for now
-      closed: 0,
-      drafts: 0,
+    // Get global platform statistics for comparison
+    const [globalStats] = await pool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM recruiters) as total_recruiters
+    `);
+
+    const stats = recruiterStats[0];
+    const global = globalStats[0];
+
+    // Calculate percentage changes
+    const jobsChange =
+      stats.jobs_last_month > 0
+        ? Math.round(
+            ((stats.jobs_this_month - stats.jobs_last_month) /
+              stats.jobs_last_month) *
+              100
+          )
+        : stats.jobs_this_month > 0
+        ? 100
+        : 0;
+
+    const response = {
+      stats: {
+        total_jobs: stats.total_jobs,
+        jobs_this_month: stats.jobs_this_month,
+        total_recruiters: global.total_recruiters, // Global metric
+        active_jobs: stats.active_jobs,
+
+        // Percentage changes
+        jobs_change: 12, // Mock for total jobs
+        jobs_this_month_change: jobsChange,
+        platform_growth: 15, // Mock global platform growth
+        active_jobs_change: 5, // Mock for active jobs
+      },
     };
 
-    res.status(200).json({ stats });
+    res.status(200).json(response);
   } catch (err) {
     console.error("Error fetching job statistics:", err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+// stats for pie chart
+
+exports.Piechart = async (req, res) => {
+  const email = req.user?.email;
+
+  if (!email) {
+    return res
+      .status(401)
+      .json({ message: "Unauthorized: User not authenticated" });
+  }
+
+  try {
+    // Get user ID from email
+    const [userRows] = await pool.query(
+      "SELECT uid FROM users WHERE email = ?",
+      [email]
+    );
+
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: "Recruiter not found" });
+    }
+
+    const uid = userRows[0].uid;
+
+    if (!uid) {
+      return res.status(400).json({
+        success: false,
+        message: "Recruiter UID is required",
+      });
+    }
+
+    const query = `
+      SELECT 
+        a.status,
+        COUNT(*) as count
+      FROM applications a
+      INNER JOIN jobs j ON a.jobid = j.jobid
+      WHERE j.uid = ?
+      GROUP BY a.status
+    `;
+
+    // Execute the query
+    const results = await pool.query(query, [uid]);
+
+    // Initialize stats with default values
+    let stats = {
+      accepted: 0,
+      rejected: 0,
+      pending: 0,
+    };
+
+    // Process results and populate stats
+    results[0].forEach((row) => {
+      stats[row.status] = parseInt(row.count);
+    });
+
+    // Return the stats
+    return res.status(200).json({
+      success: true,
+      accepted: stats.accepted,
+      rejected: stats.rejected,
+      pending: stats.pending,
+    });
+  } catch (error) {
+    console.error("Error fetching application stats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };

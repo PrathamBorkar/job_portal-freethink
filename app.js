@@ -12,6 +12,8 @@ const jobsRoutes = require("./routes/jobs.routes");
 const editProfile = require("./routes/editprofile.routes");
 const locationRoutes = require("./routes/location.routes");
 const applicationRoutes = require("./routes/application.routes");
+const marketRoutes = require("./routes/market.routes");
+const roleRoutes = require("./routes/roles.routes");
 
 const app = express();
 app.use(
@@ -25,6 +27,8 @@ app.use(express.json());
 app.use("/", rootRoutes);
 app.use("/auth", authRoutes);
 app.use("/skills", skillRoutes);
+app.use("/markets", marketRoutes);
+app.use("/roles", roleRoutes);
 app.use("/company", companyRoutes);
 app.use("/resume", resumeRoutes);
 app.use("/jobs", jobsRoutes);

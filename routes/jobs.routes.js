@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const jobsController = require("../controllers/jobs.controller");
 const { verifyToken } = require("../middlewares/auth.middleware");
+const { skilllogger } = require("../middlewares/skill.middleware");
 
 // Route to get recommended jobs for logged-in user
 router.get("/recommended", verifyToken, jobsController.getRecommendedJobs);
@@ -28,4 +29,9 @@ router.get(
   verifyToken,
   jobsController.getTotalJobsByRecruiter
 );
+
+//pie chart
+
+router.get("/PieChart", skilllogger, verifyToken, jobsController.Piechart);
+
 module.exports = router;
