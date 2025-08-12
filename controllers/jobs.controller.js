@@ -372,11 +372,11 @@ exports.deleteJob = async (req, res) => {
 
 
 
-// In your jobs.controller.js file
+
 exports.getTotalJobsByRecruiter = async (req, res) => {
-  console.log("Fetching total jobs by recruiter...");
+  console.log("Fetching job statistics by recruiter...");
   const email = req.user?.email;
-  
+
   if (!email) {
     return res.status(401).json({ message: "Unauthorized: User not authenticated" });
   }
@@ -391,24 +391,120 @@ exports.getTotalJobsByRecruiter = async (req, res) => {
 
     const uid = userRows[0].uid;
 
-    // Get total jobs count for this recruiter
-    const [totalRows] = await pool.query(`
-      SELECT COUNT(*) as total 
+    // Get recruiter's job statistics
+    const [recruiterStats] = await pool.query(`
+      SELECT 
+        COUNT(*) as total_jobs,
+        COUNT(*) as active_jobs, -- All jobs are active for now
+        COUNT(CASE WHEN posted >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN 1 END) as jobs_this_month,
+        COUNT(CASE WHEN posted >= DATE_SUB(CURDATE(), INTERVAL 2 MONTH) AND posted < DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN 1 END) as jobs_last_month
       FROM jobs 
       WHERE uid = ?
     `, [uid]);
 
-    // Since there's no status column, we'll use the total for all categories
-    const stats = {
-      total: totalRows[0].total,
-      active: totalRows[0].total, // All jobs are considered active for now
-      closed: 0,
-      drafts: 0
+    // Get global platform statistics for comparison
+    const [globalStats] = await pool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM recruiters) as total_recruiters
+    `);
+
+    const stats = recruiterStats[0];
+    const global = globalStats[0];
+
+    // Calculate percentage changes
+    const jobsChange = stats.jobs_last_month > 0 
+      ? Math.round(((stats.jobs_this_month - stats.jobs_last_month) / stats.jobs_last_month) * 100)
+      : stats.jobs_this_month > 0 ? 100 : 0;
+
+    const response = {
+      stats: {
+        total_jobs: stats.total_jobs,
+        jobs_this_month: stats.jobs_this_month,
+        total_recruiters: global.total_recruiters, // Global metric
+        active_jobs: stats.active_jobs,
+        
+        // Percentage changes
+        jobs_change: 12, // Mock for total jobs
+        jobs_this_month_change: jobsChange,
+        platform_growth: 15, // Mock global platform growth
+        active_jobs_change: 5 // Mock for active jobs
+      }
     };
 
-    res.status(200).json({ stats });
+    res.status(200).json(response);
+
   } catch (err) {
     console.error("Error fetching job statistics:", err);
     res.status(500).json({ error: err.message });
   }
 };
+
+
+// stats for pie chart 
+
+exports.Piechart = async (req, res) => {
+  const email = req.user?.email;
+  
+  if (!email) {
+    return res.status(401).json({ message: "Unauthorized: User not authenticated" });
+  }
+  
+  try {
+    // Get user ID from email
+    const [userRows] = await pool.query("SELECT uid FROM users WHERE email = ?", [email]);
+    
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: "Recruiter not found" });
+    }
+    
+    const uid = userRows[0].uid;
+    
+    if (!uid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Recruiter UID is required'
+      });
+    }
+    
+    const query = `
+      SELECT 
+        a.status,
+        COUNT(*) as count
+      FROM applications a
+      INNER JOIN jobs j ON a.jobid = j.jobid
+      WHERE j.uid = ?
+      GROUP BY a.status
+    `;
+    
+    // Execute the query
+    const results = await pool.query(query, [uid]);
+    
+    // Initialize stats with default values
+    let stats = {
+      accepted: 0,
+      rejected: 0,
+      pending: 0
+    };
+    
+    // Process results and populate stats
+    results[0].forEach(row => {
+      stats[row.status] = parseInt(row.count);
+    });
+    
+    // Return the stats
+    return res.status(200).json({
+      success: true,
+      accepted: stats.accepted,
+      rejected: stats.rejected,
+      pending: stats.pending
+    });
+    
+  } catch (error) {
+    console.error('Error fetching application stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
+    });
+  }
+};
+

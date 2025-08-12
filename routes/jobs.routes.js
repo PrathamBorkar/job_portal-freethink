@@ -19,4 +19,8 @@ router.delete('/deleteJob/:jobid',verifyToken, jobsController.deleteJob);
 router.get('/getJobsByRecruiter', verifyToken, jobsController.getJobsByRecruiter);
   
  router.get('/getTotalJobsByRecruiter', verifyToken, jobsController.getTotalJobsByRecruiter);
+
+ //pie chart 
+
+ router.get('/PieChart', verifyToken, jobsController.Piechart);
 module.exports = router;
