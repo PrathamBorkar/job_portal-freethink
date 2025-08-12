@@ -136,6 +136,85 @@ exports.createJob = async (req, res) => {
   }
 };
 
+exports.updateOneJob = async (req, res) => {
+  try {
+    const {
+      jobid,
+      uid,
+      title,
+      bigDescription,
+      posted,
+      popularity_score,
+      job_type,
+      mode_of_work,
+      exp_required,
+      salary,
+      skillids,
+      equity,
+      lid,
+      cid,
+      smallDescription,
+      opening,
+    } = req.body;
+
+    // Convert skillids array to JSON string
+    const skillidsJson = JSON.stringify(skillids);
+    const newPosted = posted.split("T")[0];
+
+    // Prepare update query
+    const [result] = await pool.query(
+      `UPDATE jobs SET
+        uid = ?,
+        title = ?,
+        bigDescription = ?,
+        posted = ?,
+        popularity_score = ?,
+        job_type = ?,
+        mode_of_work = ?,
+        exp_required = ?,
+        salary = ?,
+        skillids = ?,
+        equity = ?,
+        lid = ?,
+        cid = ?,
+        smallDescription = ?,
+        opening = ?
+      WHERE jobid = ?`,
+      [
+        uid,
+        title,
+        bigDescription,
+        newPosted,
+        popularity_score,
+        job_type,
+        mode_of_work,
+        exp_required,
+        salary,
+        skillidsJson,
+        equity,
+        lid,
+        cid,
+        smallDescription,
+        opening,
+        jobid,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ message: "Job not found or no changes made" });
+    }
+
+    res.status(200).json({ message: "Job updated successfully" });
+  } catch (err) {
+    console.error("Error updating job:", err);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", details: err.message });
+  }
+};
+
 // ✅ Get All Jobs (public)
 exports.getJobs = async (req, res) => {
   try {

@@ -6,6 +6,8 @@ const { verifyToken } = require("../middlewares/auth.middleware");
 // Route to get recommended jobs for logged-in user
 router.get("/recommended", verifyToken, jobsController.getRecommendedJobs);
 
+router.patch("/edit-job", jobsController.updateOneJob);
+
 // Create a new job
 router.post("/CreateJob", verifyToken, jobsController.createJob);
 
