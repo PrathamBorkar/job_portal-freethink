@@ -6,17 +6,23 @@ exports.createJob = async (req, res) => {
   console.log("Creating job with data:", req.body);
   try {
     const {
-      title,
+      custom_title,           // Changed from 'title' to match DB field
       job_type,
       mode_of_work,
-      exp_required,
-      salary,
-      equity,
-      lid,
-      skillids,
-      smallDescription,
-      bigDescription,
-      links
+      experience_min,         // Changed from 'exp_required' to match DB field  
+      experience_max,         // New field from DB schema
+      salary_min,             // Changed from 'salary' to match DB field
+      salary_max,             // New field from DB schema
+      equity_min,             // New field from DB schema
+      equity_max,             // New field from DB schema
+      opening,                // New field from DB schema
+      qualification_id,       // New field from DB schema
+      marketid,               // New field from DB schema
+      lid,                    // Keeping same
+      skillids,               // Keeping same
+      smallDescription,       // Keeping same
+      bigDescription,         // Keeping same
+      links                   // This might be stored elsewhere or ignored
     } = req.body;
 
     const userEmail = req.user?.email;
@@ -41,12 +47,12 @@ exports.createJob = async (req, res) => {
 
     const cid = companyRows[0].cid;
 
-    // Validation
-    if (!title || !job_type || !mode_of_work || exp_required === undefined || salary === undefined) {
+    // Validation - Updated field names
+    if (!custom_title || !job_type || !mode_of_work || experience_min === undefined || salary_min === undefined) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Validate location if provided - FIX: Use 'lid' instead of 'id'
+    // Validate location if provided
     if (lid) {
       const [locationRows] = await pool.query("SELECT lid FROM locations WHERE lid = ?", [lid]);
       if (locationRows.length === 0) {
@@ -54,31 +60,60 @@ exports.createJob = async (req, res) => {
       }
     }
 
-    // Salary parsing (simplified since frontend sends integer)
-    const parsedSalary = parseInt(salary);
-    
-    if (isNaN(parsedSalary) || parsedSalary < 1000) {
-      return res.status(400).json({ message: "Invalid salary amount" });
+    // Validate qualification if provided
+    if (qualification_id) {
+      const [qualificationRows] = await pool.query("SELECT qualification_id FROM qualification WHERE qualification_id = ?", [qualification_id]);
+      if (qualificationRows.length === 0) {
+        return res.status(400).json({ message: "Invalid qualification selected" });
+      }
     }
 
+    // Validate market if provided
+    if (marketid) {
+      const [marketRows] = await pool.query("SELECT mid FROM markets WHERE mid = ?", [marketid]);
+      if (marketRows.length === 0) {
+        return res.status(400).json({ message: "Invalid market selected" });
+      }
+    }
+
+    // Salary parsing and validation
+    const parsedSalaryMin = parseInt(salary_min);
+    const parsedSalaryMax = salary_max ? parseInt(salary_max) : null;
+
+    if (isNaN(parsedSalaryMin) || parsedSalaryMin < 1000) {
+      return res.status(400).json({ message: "Invalid minimum salary amount" });
+    }
+
+    if (parsedSalaryMax && parsedSalaryMax < parsedSalaryMin) {
+      return res.status(400).json({ message: "Maximum salary cannot be less than minimum salary" });
+    }
+
+    // Insert query with updated field names
     const [result] = await pool.query(
       `INSERT INTO jobs (
-        uid, cid, lid, title, bigDescription, smallDescription, 
-        posted, job_type, mode_of_work, exp_required,
-        salary, equity, skillids
-      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)`,
+        uid, cid, lid, custom_title, bigDescription, smallDescription, 
+        posted, job_type, mode_of_work, experience_min, experience_max,
+        salary_min, salary_max, equity_min, equity_max, opening,
+        qualification_id, marketid, skillids
+      ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         uid,
         cid,
         lid,
-        title,
+        custom_title,
         bigDescription,
         smallDescription,
         job_type,
         mode_of_work,
-        exp_required,
-        parsedSalary,
-        equity || 0,
+        experience_min || 0,
+        experience_max || 0,
+        parsedSalaryMin,
+        parsedSalaryMax,
+        equity_min || 0,
+        equity_max || 0,
+        opening || 1,
+        qualification_id || null,
+        marketid || null,
         JSON.stringify(skillids)
       ]
     );
@@ -89,14 +124,20 @@ exports.createJob = async (req, res) => {
       jobid: result.insertId,
       job: {
         jobid: result.insertId,
-        title,
+        custom_title,
         bigDescription,
         smallDescription,
         job_type,
         mode_of_work,
-        exp_required,
-        salary: parsedSalary,
-        equity: equity || 0,
+        experience_min: experience_min || 0,
+        experience_max: experience_max || 0,
+        salary_min: parsedSalaryMin,
+        salary_max: parsedSalaryMax,
+        equity_min: equity_min || 0,
+        equity_max: equity_max || 0,
+        opening: opening || 1,
+        qualification_id: qualification_id || null,
+        marketid: marketid || null,
         skillids,
         lid,
         cid,
@@ -107,7 +148,7 @@ exports.createJob = async (req, res) => {
 
   } catch (err) {
     console.error("Create job error:", err);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: "Internal server error",
       error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
