@@ -30,7 +30,11 @@ router.get(
   jobsController.getTotalJobsByRecruiter
 );
 
-//pie chart
+router.get("/getJobDetail", jobsController.getJobDetails);
+
+router.get("/getAllJobs", jobsController.getJobs);
+
+router.get("/getFilters", jobsController.getFilters);
 
 router.get("/PieChart", skilllogger, verifyToken, jobsController.Piechart);
 

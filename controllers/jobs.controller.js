@@ -318,42 +318,122 @@ exports.getRecommendedJobs = async (req, res) => {
     const skillIds = skillRows.map((row) => row.skillid);
     console.log("User skill IDs:", skillIds);
 
-    const placeholders = skillIds
-      .map(() => "JSON_CONTAINS(skillids, JSON_ARRAY(?))")
+    // Enhanced JSON search condition
+    const skillConditions = skillIds
+      .map(() => `JSON_CONTAINS(skillids, CAST(? AS JSON), '$')`)
       .join(" OR ");
-
-    console.log("Constructed SQL condition for skills:", placeholders);
 
     console.log("Fetching jobs matching user skills...");
     const [jobs] = await pool.query(
-      `SELECT * FROM jobs WHERE ${placeholders} ORDER BY posted DESC`,
-      skillIds
+      `SELECT
+        j.jobid,
+        j.uid,
+        j.title,
+        j.bigDescription,
+        j.posted,
+        j.popularity_score,
+        j.job_type,
+        j.mode_of_work,
+        j.opening,
+        j.cid AS company_id,
+        j.salary_min,
+        j.salary_max,
+        j.experience_min,
+        j.experience_max,
+        j.skillids,
+        j.job_roles,
+        j.lid,
+        j.job_markets,
+        j.qualification,
+        j.smallDescription,
+        j.equity_min,
+        j.equity_max,
+        
+        c.name AS company_name,
+        c.companySize,
+        c.type AS company_type,
+        c.tags AS company_tags,
+        c.status AS company_status,
+        c.CEO AS company_ceo,
+        
+        l.lname AS location_name
+      FROM jobs j
+      LEFT JOIN company c ON j.cid = c.cid
+      LEFT JOIN locations l ON j.lid = l.lid
+      WHERE ${skillConditions}
+      ORDER BY j.posted DESC`,
+      skillIds.map((id) => JSON.stringify(id))
     );
 
     console.log(`Found ${jobs.length} job(s) matching the skills.`);
 
-    for (let job of jobs) {
-      console.log(`Fetching location for job with lid: ${job.lid}`);
-      const [locationData] = await pool.query(
-        `SELECT lname FROM locations WHERE lid = ?`,
-        [job.lid]
-      );
+    // Enhanced JSON parsing function
+    const parseField = (field) => {
+      if (!field) return [];
+      if (Array.isArray(field)) return field;
+      if (typeof field === "string") {
+        try {
+          const parsed = JSON.parse(field);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          if (field.includes(",")) {
+            return field
+              .split(",")
+              .map((item) => item.trim())
+              .filter((item) => item && !isNaN(item))
+              .map(Number);
+          }
+          if (!isNaN(field)) return [Number(field)];
+          return [];
+        }
+      }
+      return [field];
+    };
 
-      console.log(`Fetching company info for cid: ${job.cid}`);
-      const [companyData] = await pool.query(
-        `SELECT name, location, status, tags, type FROM company WHERE cid = ?`,
-        [job.cid]
-      );
+    // Process jobs to match getJobs format
+    const processedJobs = jobs.map((job) => ({
+      jobid: job.jobid,
+      uid: job.uid,
+      custom_title: job.title,
+      bigDescription: job.bigDescription,
+      posted: job.posted,
+      popularity_score: job.popularity_score,
+      job_type: job.job_type,
+      mode_of_work: job.mode_of_work,
+      opening: job.opening,
+      company_id: job.company_id,
+      salary_min: job.salary_min,
+      salary_max: job.salary_max,
+      experience_min: job.experience_min,
+      experience_max: job.experience_max,
+      smallDescription: job.smallDescription,
+      equity_min: job.equity_min,
+      equity_max: job.equity_max,
+      company_name: job.company_name,
+      companySize: job.companySize,
+      company_type: job.company_type,
+      company_tags: job.company_tags,
+      company_status: job.company_status,
+      company_ceo: job.company_ceo,
+      job_roles: parseField(job.job_roles).join(","),
+      markets: parseField(job.job_markets).join(","),
+      locations: job.location_name || "",
+      skills: parseField(job.skillids).join(","),
+      qualification_name: job.qualification,
+    }));
 
-      job.location = locationData[0]?.lname || null;
-      job.company = companyData[0] || null;
-    }
-
-    console.log("Final recommended jobs prepared.");
-    res.status(200).json({ jobs });
+    console.log("Final recommended jobs prepared in getJobs format.");
+    res.status(200).json({
+      success: true,
+      jobs: processedJobs,
+    });
   } catch (err) {
     console.error("Error in getRecommendedJobs:", err);
-    res.status(500).json({ error: "Server error: " + err.message });
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: err.message,
+    });
   }
 };
 
@@ -673,6 +753,464 @@ exports.Piechart = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+exports.getFilters = async (req, res) => {
+  try {
+    const queries = {
+      jobRoles: "SELECT rid as job_role_id, roleName as role_name FROM roles",
+      markets: "SELECT mid, mname FROM markets",
+      locations: "SELECT lid, lname FROM locations",
+      skills: "SELECT skillid, skillName as skill_name FROM skills",
+      companies: "SELECT cid, name FROM company",
+    };
+
+    const runQuery = async (sql, labelKey, valueKey) => {
+      const [rows] = await pool.query(sql);
+      console.log(`Fetched ${rows.length} rows for ${labelKey}`);
+      return rows.map((item) => ({
+        label: item[labelKey],
+        value: item[valueKey],
+      }));
+    };
+
+    const [jobRoles, markets, locations, skills, companies] = await Promise.all(
+      [
+        runQuery(queries.jobRoles, "role_name", "job_role_id"),
+        runQuery(queries.markets, "mname", "mid"),
+        runQuery(queries.locations, "lname", "lid"),
+        runQuery(queries.skills, "skill_name", "skillid"),
+        runQuery(queries.companies, "name", "cid"),
+      ]
+    );
+
+    res.json({
+      success: true,
+      jobRoles,
+      markets,
+      locations,
+      skills,
+      companies,
+    });
+  } catch (err) {
+    console.error("Error fetching filters:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch filters",
+      jobRoles: [],
+      markets: [],
+      locations: [],
+      skills: [],
+      companies: [],
+    });
+  }
+};
+
+exports.getJobs = async (req, res) => {
+  try {
+    console.log("Received filters:", req.query);
+
+    const whereClauses = [];
+    const params = [];
+
+    // Parse all filters
+    const parseArrayFilter = (filter) => {
+      if (!filter) return [];
+      return typeof filter === "string" ? filter.split(",") : filter;
+    };
+
+    const parseNumericArrayFilter = (filter) => {
+      return parseArrayFilter(filter)
+        .map(Number)
+        .filter((n) => !isNaN(n));
+    };
+
+    const jobRoles = parseNumericArrayFilter(req.query.jobRoles);
+    const preferredLocations = parseNumericArrayFilter(
+      req.query.preferredLocations
+    );
+    const skills = parseNumericArrayFilter(req.query.skills);
+    const markets = parseNumericArrayFilter(req.query.markets);
+    const companies = parseNumericArrayFilter(req.query.companies);
+    const companySizes = parseArrayFilter(req.query.companySizes);
+    const jobTypes = parseArrayFilter(req.query.jobTypes);
+    const education = parseNumericArrayFilter(req.query.education);
+    const companyTypes = parseArrayFilter(req.query.companyTypes);
+    const modeOfWork = parseArrayFilter(req.query.mode_of_work);
+
+    const salaryMin = req.query.salaryMin ? Number(req.query.salaryMin) : null;
+    const salaryMax = req.query.salaryMax ? Number(req.query.salaryMax) : null;
+    const experienceMin = req.query.experienceMin
+      ? Number(req.query.experienceMin)
+      : null;
+    const experienceMax = req.query.experienceMax
+      ? Number(req.query.experienceMax)
+      : null;
+
+    // Build WHERE clauses
+    if (companyTypes.length > 0) {
+      const orConditions = companyTypes
+        .map(() => `JSON_CONTAINS(c.type, ?, '$')`)
+        .join(" OR ");
+      whereClauses.push(`(${orConditions})`);
+      params.push(...companyTypes.map((type) => JSON.stringify(type)));
+    }
+
+    if (jobRoles.length > 0) {
+      const orConditions = jobRoles
+        .map(() => `JSON_CONTAINS(j.job_roles, ?, '$')`)
+        .join(" OR ");
+      whereClauses.push(`(${orConditions})`);
+      params.push(...jobRoles.map((id) => id.toString()));
+    }
+
+    if (preferredLocations.length > 0) {
+      const placeholders = preferredLocations.map(() => "?").join(", ");
+      whereClauses.push(`j.lid IN (${placeholders})`);
+      params.push(...preferredLocations);
+    }
+
+    if (salaryMin !== null && salaryMax !== null) {
+      whereClauses.push(`(j.salary_max >= ? AND j.salary_min <= ?)`);
+      params.push(salaryMin, salaryMax);
+    } else if (salaryMin !== null) {
+      whereClauses.push(`j.salary_max >= ?`);
+      params.push(salaryMin);
+    } else if (salaryMax !== null) {
+      whereClauses.push(`j.salary_min <= ?`);
+      params.push(salaryMax);
+    }
+
+    if (experienceMin !== null && experienceMax !== null) {
+      whereClauses.push(`(j.experience_max >= ? AND j.experience_min <= ?)`);
+      params.push(experienceMin, experienceMax);
+    } else if (experienceMin !== null) {
+      whereClauses.push(`j.experience_max >= ?`);
+      params.push(experienceMin);
+    } else if (experienceMax !== null) {
+      whereClauses.push(`j.experience_min <= ?`);
+      params.push(experienceMax);
+    }
+
+    if (skills.length > 0) {
+      const orConditions = skills
+        .map(() => `JSON_CONTAINS(j.skillids, ?, '$')`)
+        .join(" OR ");
+      whereClauses.push(`(${orConditions})`);
+      params.push(...skills.map((id) => id.toString()));
+    }
+
+    if (markets.length > 0) {
+      const orConditions = markets
+        .map(() => `JSON_CONTAINS(j.job_markets, ?, '$')`)
+        .join(" OR ");
+      whereClauses.push(`(${orConditions})`);
+      params.push(...markets.map((id) => id.toString()));
+    }
+
+    if (companies.length > 0) {
+      const placeholders = companies.map(() => "?").join(", ");
+      whereClauses.push(`c.cid IN (${placeholders})`);
+      params.push(...companies);
+    }
+
+    if (companySizes.length > 0) {
+      const placeholders = companySizes.map(() => "?").join(", ");
+      whereClauses.push(`c.companySize IN (${placeholders})`);
+      params.push(...companySizes);
+    }
+
+    if (jobTypes.length > 0) {
+      const placeholders = jobTypes.map(() => "?").join(", ");
+      whereClauses.push(`j.job_type IN (${placeholders})`);
+      params.push(...jobTypes);
+    }
+
+    if (education.length > 0) {
+      const placeholders = education.map(() => "?").join(", ");
+      whereClauses.push(`j.qualification IN (${placeholders})`);
+      params.push(...education);
+    }
+
+    if (modeOfWork.length > 0) {
+      const placeholders = modeOfWork.map(() => "?").join(", ");
+      whereClauses.push(`j.mode_of_work IN (${placeholders})`);
+      params.push(...modeOfWork);
+    }
+
+    // Base query
+    let sql = `
+      SELECT
+        j.jobid,
+        j.uid,
+        j.title,
+        j.bigDescription,
+        j.posted,
+        j.popularity_score,
+        j.job_type,
+        j.mode_of_work,
+        j.opening,
+        j.cid AS company_id,
+        j.salary_min,
+        j.salary_max,
+        j.experience_min,
+        j.experience_max,
+        j.skillids,
+        j.job_roles,
+        j.lid,
+        j.job_markets,
+        j.qualification,
+        j.smallDescription,
+        j.equity_min,
+        j.equity_max,
+        
+        c.name AS company_name,
+        c.companySize,
+        c.type AS company_type,
+        c.tags AS company_tags,
+        c.status AS company_status,
+        c.CEO AS company_ceo,
+        
+        l.lname AS location_name
+      FROM jobs j
+      LEFT JOIN company c ON j.cid = c.cid
+      LEFT JOIN locations l ON j.lid = l.lid
+    `;
+
+    if (whereClauses.length > 0) {
+      sql += " WHERE " + whereClauses.join(" AND ");
+    }
+
+    sql += " ORDER BY j.posted DESC";
+
+    console.log("Final SQL:", sql);
+    console.log("Query Params:", params);
+
+    const [rows] = await pool.query(sql, params);
+
+    // Enhanced safe JSON parsing
+    const parseField = (field) => {
+      if (!field) return [];
+
+      // Handle cases where it's already an array
+      if (Array.isArray(field)) return field;
+
+      // Handle string representations of arrays
+      if (typeof field === "string") {
+        // Try to parse as JSON first
+        try {
+          const parsed = JSON.parse(field);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          // If not JSON, try comma-separated values
+          if (field.includes(",")) {
+            return field
+              .split(",")
+              .map((item) => item.trim())
+              .filter((item) => item);
+          }
+          return [field];
+        }
+      }
+
+      // Fallback for other cases
+      return [field];
+    };
+
+    // Process the rows to match the expected response structure
+    const processedJobs = rows.map((job) => {
+      const skillIds = parseField(job.skillids);
+      const roleIds = parseField(job.job_roles);
+      const marketIds = parseField(job.job_markets);
+
+      return {
+        jobid: job.jobid,
+        uid: job.uid,
+        custom_title: job.title,
+        bigDescription: job.bigDescription,
+        posted: job.posted,
+        popularity_score: job.popularity_score,
+        job_type: job.job_type,
+        mode_of_work: job.mode_of_work,
+        opening: job.opening,
+        company_id: job.company_id,
+        salary_min: job.salary_min,
+        salary_max: job.salary_max,
+        experience_min: job.experience_min,
+        experience_max: job.experience_max,
+        smallDescription: job.smallDescription,
+        equity_min: job.equity_min,
+        equity_max: job.equity_max,
+        company_name: job.company_name,
+        companySize: job.companySize,
+        company_type: job.company_type,
+        company_tags: job.company_tags,
+        company_status: job.company_status,
+        company_ceo: job.company_ceo,
+        job_roles: roleIds.join(","),
+        markets: marketIds.join(","),
+        locations: job.location_name || "",
+        skills: skillIds.join(","),
+        qualification_name: job.qualification,
+      };
+    });
+
+    res.json({ success: true, jobs: processedJobs });
+  } catch (error) {
+    console.error("Error fetching jobs:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: error.message,
+    });
+  }
+};
+
+exports.getJobDetails = async (req, res) => {
+  try {
+    const jobid = req.query.jobid;
+    console.log(`Received jobid from query param: ${jobid}`);
+
+    if (!jobid) {
+      return res.status(400).json({ error: "Missing jobid query parameter" });
+    }
+
+    // Main query to fetch job details
+    const sqlJobDetails = `
+      SELECT
+        j.jobid,
+        j.uid,
+        j.title,
+        j.bigDescription,
+        j.posted,
+        j.popularity_score,
+        j.job_type,
+        j.mode_of_work,
+        j.opening,
+        j.cid AS company_id,
+        j.salary_min,
+        j.salary_max,
+        j.experience_min,
+        j.experience_max,
+        j.smallDescription,
+        j.equity_min,
+        j.equity_max,
+        j.qualification,
+        j.skillids,
+        j.job_roles,
+        j.lid, 
+        j.job_markets,
+        
+        c.name AS company_name,
+        c.location AS company_location,
+        c.companySize,
+        c.tags AS company_tags,
+        
+        l.lname AS location_name
+      FROM jobs j
+      LEFT JOIN company c ON j.cid = c.cid
+      LEFT JOIN locations l ON j.lid = l.lid
+      WHERE j.jobid = ?
+    `;
+
+    const [jobDetails] = await pool.query(sqlJobDetails, [jobid]);
+
+    if (jobDetails.length === 0) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
+    const job = jobDetails[0];
+
+    let marketNames = [];
+    if (job.job_markets) {
+      try {
+        let marketIds;
+
+        if (Array.isArray(job.job_markets)) {
+          marketIds = job.job_markets;
+        } else if (typeof job.job_markets === "string") {
+          const sanitizedJobMarkets = job.job_markets.trim(); // Trim string
+          marketIds = JSON.parse(sanitizedJobMarkets); // Parse it into an array
+        }
+
+        if (Array.isArray(marketIds) && marketIds.length > 0) {
+          const sqlMarkets = `SELECT mname FROM markets WHERE mid IN (?)`;
+          const [marketResults] = await pool.query(sqlMarkets, [marketIds]);
+          marketNames = marketResults.map((result) => result.mname);
+        }
+      } catch (err) {
+        console.error("Error parsing job_markets JSON:", err.message);
+        return res.status(500).json({
+          error: "Error parsing job_markets JSON",
+          message: err.message,
+        });
+      }
+    }
+
+    let skillNames = [];
+    if (job.skillids) {
+      try {
+        let skillIds;
+
+        if (Array.isArray(job.skillids)) {
+          skillIds = job.skillids;
+        } else if (typeof job.skillids === "string") {
+          const sanitizedSkillIds = job.skillids.trim(); // Trim string
+          skillIds = JSON.parse(sanitizedSkillIds); // Parse it into an array
+        }
+
+        if (Array.isArray(skillIds) && skillIds.length > 0) {
+          const sqlSkills = `SELECT skillName FROM skills WHERE skillid IN (?)`;
+          const [skillResults] = await pool.query(sqlSkills, [skillIds]);
+          skillNames = skillResults.map((result) => result.skillName);
+        }
+      } catch (err) {
+        console.error("Error parsing skillids JSON:", err.message);
+        return res
+          .status(500)
+          .json({ error: "Error parsing skillids JSON", message: err.message });
+      }
+    }
+
+    // Process fields to match original response structure
+    const processedJob = {
+      jobid: job.jobid,
+      uid: job.uid,
+      custom_title: job.title,
+      bigDescription: job.bigDescription,
+      posted: job.posted,
+      popularity_score: job.popularity_score,
+      job_type: job.job_type,
+      mode_of_work: job.mode_of_work,
+      opening: job.opening,
+      company_id: job.company_id,
+      salary_min: job.salary_min,
+      salary_max: job.salary_max,
+      experience_min: job.experience_min,
+      experience_max: job.experience_max,
+      smallDescription: job.smallDescription,
+      equity_min: job.equity_min,
+      equity_max: job.equity_max,
+      company_name: job.company_name,
+      companySize: job.companySize,
+      company_location: job.company_location,
+      company_tags: job.company_tags,
+      qualification_id: job.qualification,
+      qualification_name: job.qualification,
+      job_roles: job.job_roles ? job.job_roles.join(",") : "",
+      markets: marketNames.join(", "),
+      locations: job.location_name || "",
+      skills: skillNames.join(", "),
+    };
+
+    res.json(processedJob);
+  } catch (err) {
+    console.error("Error fetching job detail:", err);
+    res.status(500).json({
+      error: "Internal server error",
+      message: err.message,
     });
   }
 };

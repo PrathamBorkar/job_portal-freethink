@@ -2,8 +2,8 @@ const pool = require("../config/db");
 const { sendEmail } = require("../utils/mailer");
 
 exports.GetApplication = async (req, res) => {
-   const jobid = req.params.jobid;
-   console.log("Fetching applications for job ID:", jobid);
+  const jobid = req.params.jobid;
+  console.log("Fetching applications for job ID:", jobid);
 
   if (!jobid) {
     return res
@@ -21,11 +21,14 @@ exports.GetApplication = async (req, res) => {
     if (uss.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "No applications found for this job." });
+        .json({
+          success: false,
+          message: "No applications found for this job.",
+        });
     }
 
     // Extract uids
-    const uids = uss.map(row => row.uid);
+    const uids = uss.map((row) => row.uid);
 
     // Fetch application details for all uids - INCLUDING uid and user details
     const [applications] = await pool.query(
@@ -51,15 +54,14 @@ exports.GetApplication = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: applications
+      data: applications,
     });
-
   } catch (error) {
     console.error("Error fetching applications:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -88,20 +90,19 @@ exports.GetEducation = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: education
+      data: education,
     });
-
   } catch (error) {
     console.error("Error fetching education:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message
+      error: error.message,
     });
   }
-}
+};
 
-// FIXED: Get experience by uid from URL params instead of middleware  
+// FIXED: Get experience by uid from URL params instead of middleware
 exports.GetExperience = async (req, res) => {
   const uid = req.params.uid; // Changed from req.uid to req.params.uid
   console.log("Fetching experience for user ID:", uid);
@@ -126,18 +127,17 @@ exports.GetExperience = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: experience
+      data: experience,
     });
-
   } catch (error) {
     console.error("Error fetching experience:", error);
     return res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message
+      error: error.message,
     });
   }
-}   
+};
 
 // FIXED: Send email function that doesn't send response (helper function)
 async function sendEmailNotification(uid, status) {
@@ -170,7 +170,6 @@ async function sendEmailNotification(uid, status) {
     // Send email
     await sendEmail(email, subject, message);
     return { success: true, message: "Email sent successfully" };
-
   } catch (error) {
     console.error("Error sending email notification:", error);
     throw error;
@@ -182,17 +181,19 @@ exports.Sendmail = async (req, res) => {
   const { uid, status } = req.body;
 
   if (!uid || !status) {
-    return res.status(400).json({ success: false, message: "UID and status are required" });
+    return res
+      .status(400)
+      .json({ success: false, message: "UID and status are required" });
   }
 
   try {
     const result = await sendEmailNotification(uid, status);
     return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({ 
-      success: false, 
-      message: "Server error", 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
     });
   }
 };
@@ -202,7 +203,9 @@ exports.UpdatedStatus = async (req, res) => {
   const { uid, status } = req.body;
 
   if (!uid || !status) {
-    return res.status(400).json({ success: false, message: "UID and status are required" });
+    return res
+      .status(400)
+      .json({ success: false, message: "UID and status are required" });
   }
 
   try {
@@ -213,39 +216,68 @@ exports.UpdatedStatus = async (req, res) => {
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: "Application not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Application not found" });
     }
 
     // Send email notification (only for accepted/rejected status)
-    if (status.toLowerCase() === 'accepted' || status.toLowerCase() === 'rejected') {
+    if (
+      status.toLowerCase() === "accepted" ||
+      status.toLowerCase() === "rejected"
+    ) {
       try {
         await sendEmailNotification(uid, status);
-        return res.status(200).json({ 
-          success: true, 
-          message: `Application status updated to ${status}. Email notification sent.` 
+        return res.status(200).json({
+          success: true,
+          message: `Application status updated to ${status}. Email notification sent.`,
         });
       } catch (emailError) {
         console.error("Email sending failed:", emailError);
         // Status was updated successfully, but email failed
-        return res.status(200).json({ 
-          success: true, 
-          message: `Application status updated to ${status}. Email notification failed: ${emailError.message}` 
+        return res.status(200).json({
+          success: true,
+          message: `Application status updated to ${status}. Email notification failed: ${emailError.message}`,
         });
       }
     } else {
       // For pending status, don't send email
-      return res.status(200).json({ 
-        success: true, 
-        message: `Application status updated to ${status}.` 
+      return res.status(200).json({
+        success: true,
+        message: `Application status updated to ${status}.`,
       });
     }
-
   } catch (error) {
     console.error("Error updating application status:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Server error", 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
     });
+  }
+};
+
+exports.ApplyForJob = async (req, res) => {
+  const { applicationData } = req.body;
+
+  if (!applicationData || !applicationData.uid || !applicationData.jobid) {
+    return res.status(400).json({ message: "Missing uid or jobid" });
+  }
+
+  try {
+    const appliedDate = new Date();
+
+    // Insert application or update if exists
+    await pool.query(
+      `INSERT INTO applications (uid, jobid, applied, status)
+       VALUES (?, ?, ?, 'pending')
+       ON DUPLICATE KEY UPDATE applied = VALUES(applied), status = 'pending'`,
+      [applicationData.uid, applicationData.jobid, appliedDate]
+    );
+
+    res.json({ message: "Application submitted successfully" });
+  } catch (err) {
+    console.error("Error applying for job:", err);
+    res.status(500).json({ message: "Server error while applying" });
   }
 };
