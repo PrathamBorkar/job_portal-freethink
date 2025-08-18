@@ -10,6 +10,8 @@ router.get(
   verifyToken,
   applicationController.GetApplication
 );
+
+router.get("/:uid", applicationController.GetApplicationsForUser);
 router.get("/education/:uid", applicationController.GetEducation);
 router.get("/experience/:uid", applicationController.GetExperience);
 router.put("/status", applicationController.UpdatedStatus);

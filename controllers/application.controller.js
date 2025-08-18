@@ -12,28 +12,10 @@ exports.GetApplication = async (req, res) => {
   }
 
   try {
-    // First get all uids for this job
-    const [uss] = await pool.query(
-      "SELECT uid FROM applications WHERE jobid = ?",
-      [jobid]
-    );
-
-    if (uss.length === 0) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "No applications found for this job.",
-        });
-    }
-
-    // Extract uids
-    const uids = uss.map((row) => row.uid);
-
-    // Fetch application details for all uids - INCLUDING uid and user details
     const [applications] = await pool.query(
       `SELECT 
         a.uid,
+        a.jobid,
         a.applied,
         a.status,
         ap.preferredLocation,
@@ -47,10 +29,17 @@ exports.GetApplication = async (req, res) => {
       FROM applications AS a
       JOIN applicants AS ap ON a.uid = ap.uid
       LEFT JOIN users AS u ON a.uid = u.uid
-      WHERE a.uid IN (?)
+      WHERE a.jobid = ?
       ORDER BY a.applied`,
-      [uids]
+      [jobid]
     );
+
+    if (applications.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No applications found for this job.",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -279,5 +268,48 @@ exports.ApplyForJob = async (req, res) => {
   } catch (err) {
     console.error("Error applying for job:", err);
     res.status(500).json({ message: "Server error while applying" });
+  }
+};
+
+exports.GetApplicationsForUser = async (req, res) => {
+  const uid = req.params.uid;
+  console.log("Fetching applications for UID:", uid);
+
+  if (!uid) {
+    return res
+      .status(400)
+      .json({ success: false, message: "UID is required." });
+  }
+
+  try {
+    const [applications] = await pool.query(
+      `SELECT 
+      a.uid as uid,
+      a.applied as applied,
+      a.status as status,
+      a.interview_score as  interview_score,
+      j.title as title
+       FROM applications a JOIN jobs j ON a.jobid = j.jobid WHERE a.uid = ?`,
+      [uid]
+    );
+
+    if (applications.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No applications found for this user.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: applications,
+    });
+  } catch (error) {
+    console.error("Error fetching applications:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
