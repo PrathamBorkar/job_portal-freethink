@@ -807,6 +807,120 @@ exports.getFilters = async (req, res) => {
     });
   }
 };
+// controllers/companyJobsController.js
+
+exports.getCompanyJobs = async (req, res) => {
+  try {
+    const companyId = req.query.companyId; // ✅ matches frontend
+
+    if (!companyId) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Company ID is required" });
+    }
+
+    console.log("🟠 Fetching jobs for company:", companyId);
+
+    // Base query
+    let sql = `
+      SELECT
+        j.jobid,
+        j.uid,
+        j.title,
+        j.bigDescription,
+        j.posted,
+        j.popularity_score,
+        j.job_type,
+        j.mode_of_work,
+        j.opening,
+        j.cid AS company_id,
+        j.salary_min,
+        j.salary_max,
+        j.experience_min,
+        j.experience_max,
+        j.skillids,
+        j.job_roles,
+        j.lid,
+        j.job_markets,
+        j.smallDescription,
+        j.equity_min,
+        j.equity_max,
+        j.qualification,
+        c.name AS company_name,
+        c.companySize,
+        c.type AS company_type,
+        c.tags AS company_tags,
+        c.status AS company_status,
+        c.CEO AS company_ceo,
+        l.lname AS location_name
+      FROM jobs j
+      LEFT JOIN company c ON j.cid = c.cid
+      LEFT JOIN locations l ON j.lid = l.lid
+      WHERE j.cid = ?
+      ORDER BY j.posted DESC
+    `;
+
+    const [rows] = await pool.query(sql, [companyId]);
+
+    // Helper to parse JSON fields
+    const parseField = (field) => {
+      if (!field) return [];
+      if (Array.isArray(field)) return field;
+      if (typeof field === "string") {
+        try {
+          const parsed = JSON.parse(field);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          return field.includes(",")
+            ? field.split(",").map((s) => s.trim())
+            : [field];
+        }
+      }
+      return [field];
+    };
+
+    // Process jobs
+    const processedJobs = rows.map((job) => ({
+      jobid: job.jobid,
+      uid: job.uid,
+      custom_title: job.title,
+      bigDescription: job.bigDescription,
+      posted: job.posted,
+      popularity_score: job.popularity_score,
+      job_type: job.job_type,
+      mode_of_work: job.mode_of_work,
+      opening: job.opening,
+      company_id: job.company_id,
+      salary_min: job.salary_min,
+      salary_max: job.salary_max,
+      experience_min: job.experience_min,
+      experience_max: job.experience_max,
+      smallDescription: job.smallDescription,
+      equity_min: job.equity_min,
+      equity_max: job.equity_max,
+      qualification: job.qualification,
+      company_name: job.company_name,
+      companySize: job.companySize,
+      company_type: job.company_type,
+      company_tags: job.company_tags,
+      company_status: job.company_status,
+      company_ceo: job.company_ceo,
+      job_roles: parseField(job.job_roles).join(","),
+      markets: parseField(job.job_markets).join(","),
+      locations: job.location_name || "",
+      skills: parseField(job.skillids).join(","),
+    }));
+
+    res.json({ success: true, jobs: processedJobs });
+  } catch (error) {
+    console.error("❌ Error fetching company jobs:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal Server Error",
+      message: error.message,
+    });
+  }
+};
 
 exports.getJobs = async (req, res) => {
   try {
