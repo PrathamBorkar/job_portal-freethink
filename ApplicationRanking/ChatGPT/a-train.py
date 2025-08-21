@@ -36,10 +36,11 @@ preprocessor = ColumnTransformer(
     ]
 )
 
+model_one = GradientBoostingRegressor(n_estimators=150, learning_rate=0.1, max_depth=3)
 
 pipe = Pipeline([
-    ('preprocessor', preprocessor),  
-    ('model', GradientBoostingRegressor(n_estimators=150, learning_rate=0.1, max_depth=3))  
+    ('preprocessor', preprocessor),
+    ('model', model_one)  
 ])
 
 
@@ -54,7 +55,7 @@ param_grid = {
 }
 
 
-grid_search = GridSearchCV(pipe, param_grid, cv=10, n_jobs=-1, verbose=1)
+grid_search = GridSearchCV(pipe, param_grid, cv=5, n_jobs=-1, verbose=1)
 grid_search.fit(X, y)
 
 
@@ -68,6 +69,22 @@ mse = mean_squared_error(y, pred)
 r2 = r2_score(y, pred)
 
 
-save_model(grid_search.best_estimator_, 'chatgpt_model.joblib')
 
-create_pdf_report(pred, y, best_params, mse, r2, child_folder='./report/')
+
+# plt.figure(figsize=(8, 6))
+# plt.scatter(y, pred, color='blue', alpha=0.6, label="Predicted vs Actual")
+# plt.plot([min(y), max(y)], [min(y), max(y)], color='red', linestyle='--', label='Perfect Prediction')
+# plt.xlabel('Actual Values')
+# plt.ylabel('Predicted Values')
+# plt.title('Predicted vs Actual Values')
+# plt.legend()
+# plt.show()
+
+# Display regression scores (MSE and R²)
+print(f"Mean Squared Error (MSE): {mse}")
+print(f"R-squared (R²): {r2}")
+
+
+# save_model(grid_search.best_estimator_, 'chatgpt_model.joblib')
+
+# create_pdf_report(pred, y, best_params, mse, r2, child_folder='./report/')
