@@ -299,6 +299,7 @@ exports.patchSkillData = async (req, res) => {
     });
   }
 };
+
 exports.patchRecruiterData = async (req, res) => {
   const editData = req.body; // 🔹 accept fields directly from frontend
 

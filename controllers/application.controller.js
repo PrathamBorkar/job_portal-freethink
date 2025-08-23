@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 const { sendEmail } = require("../utils/mailer");
+
 (exports.getApplicationStatus = async (req, res) => {
   const userId = req.params.uid;
   console.log(`Received userId param: ${userId}`);
@@ -137,6 +138,82 @@ exports.GetEducation = async (req, res) => {
   }
 };
 
+exports.getUserStats = async (req, res) => {
+  try {
+    const { uid } = req.query;
+
+    if (!uid) {
+      return res.status(400).json({ message: "Missing uid parameter" });
+    }
+
+    // 1. Total applications
+    const [totalApplications] = await pool.query(
+      `SELECT COUNT(*) AS count FROM applications WHERE uid = ?`,
+      [uid]
+    );
+
+    // 2. Applications this month
+    const [applicationsThisMonth] = await pool.query(
+      `SELECT COUNT(*) AS count 
+       FROM applications 
+       WHERE uid = ? 
+         AND MONTH(applied) = MONTH(CURRENT_DATE()) 
+         AND YEAR(applied) = YEAR(CURRENT_DATE())`,
+      [uid]
+    );
+
+    // 3. Distinct companies applied
+    const [totalCompaniesApplied] = await pool.query(
+      `SELECT COUNT(DISTINCT j.cid) AS count
+       FROM applications a
+       JOIN jobs j ON a.jobid = j.jobid
+       WHERE a.uid = ?`,
+      [uid]
+    );
+
+    // 4. Offers received
+    const [offersReceived] = await pool.query(
+      `SELECT COUNT(*) AS count 
+       FROM applications 
+       WHERE uid = ? AND status = 'accepted'`,
+      [uid]
+    );
+
+    // 5. Applications last month (for change %)
+    const [lastMonthApplications] = await pool.query(
+      `SELECT COUNT(*) AS count 
+       FROM applications 
+       WHERE uid = ? 
+         AND MONTH(applied) = MONTH(CURRENT_DATE() - INTERVAL 1 MONTH) 
+         AND YEAR(applied) = YEAR(CURRENT_DATE() - INTERVAL 1 MONTH)`,
+      [uid]
+    );
+
+    const applicationsThisMonthChange =
+      lastMonthApplications[0].count === 0
+        ? 0
+        : ((applicationsThisMonth[0].count - lastMonthApplications[0].count) /
+            lastMonthApplications[0].count) *
+          100;
+
+    // ✅ Send response
+    res.json({
+      data: {
+        totalApplications: totalApplications[0].count,
+        applicationsThisMonth: applicationsThisMonth[0].count,
+        totalCompaniesApplied: totalCompaniesApplied[0].count,
+        offersReceived: offersReceived[0].count,
+        totalApplicationsChange: 0, // optional to implement later
+        applicationsThisMonthChange,
+        totalCompaniesChange: 0,
+        offersReceivedChange: 0,
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching user stats:", err);
+    res.status(500).json({ message: "Server error fetching stats" });
+  }
+};
 // FIXED: Get experience by uid from URL params instead of middleware
 exports.GetExperience = async (req, res) => {
   const uid = req.params.uid; // Changed from req.uid to req.params.uid
@@ -289,23 +366,23 @@ exports.UpdatedStatus = async (req, res) => {
     });
   }
 };
-
 exports.ApplyForJob = async (req, res) => {
-  const { applicationData } = req.body;
+  const { jobid } = req.body;
 
-  if (!applicationData || !applicationData.uid || !applicationData.jobid) {
-    return res.status(400).json({ message: "Missing uid or jobid" });
+  if (!jobid) {
+    return res.status(400).json({ message: "Missing jobid" });
   }
 
   try {
+    // ✅ user already set by verifyToken middleware
+    const uid = req.user.id; // use id from payload
     const appliedDate = new Date();
 
-    // Insert application or update if exists
     await pool.query(
       `INSERT INTO applications (uid, jobid, applied, status)
        VALUES (?, ?, ?, 'pending')
        ON DUPLICATE KEY UPDATE applied = VALUES(applied), status = 'pending'`,
-      [applicationData.uid, applicationData.jobid, appliedDate]
+      [uid, jobid, appliedDate]
     );
 
     res.json({ message: "Application submitted successfully" });
