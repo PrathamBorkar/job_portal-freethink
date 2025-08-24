@@ -8,9 +8,14 @@ import requests
 import os
 
 predefined_skills = [
-    "Python", "Java", "C++", "CSS", "HTML", "JavaScript", "Django", "React", 
-    "Machine Learning", "Deep Learning", "Data Science", "SQL", "NoSQL"
+    "Adobe XD", "Angular", "AWS", "Azure", "C++", "CSS", "Data Science", "Django", 
+    "Docker", "Express.js", "Figma", "Flask", "Git", "GraphQL", "HTML", "Illustrator", 
+    "Java", "JavaScript", "Kubernetes", "Laravel", "Linux", "Machine Learning", 
+    "Microservices", "MongoDB", "MySQL", "Next.js", "Node.js", "Nuxt.js", "Photoshop", 
+    "PHP", "PostgreSQL", "Python", "React", "Redux", "REST API", "TypeScript", 
+    "UI/UX Design", "Vue.js", "Vuex"
 ]
+
 
 EXPRESS = os.getenv('EXPRESS', 'http://localhost:3000')
 
@@ -57,7 +62,7 @@ suggest_skills_for_applicant = Blueprint('suggest_skills_for_applicant', __name_
 @suggest_skills_for_applicant.route('/suggest-skills/<int:uid>', methods=['GET'])
 def suggest_skills_for_app(uid):
     
-    response = requests.get(f"{EXPRESS}/resume/{uid}")
+    response = requests.get(f"{EXPRESS}/resume/view-resume/{uid}")
 
     if response.status_code != 200:
         return jsonify({"message": "Failed to download resume from express"}), 500
