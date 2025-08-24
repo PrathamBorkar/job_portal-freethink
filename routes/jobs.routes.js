@@ -38,4 +38,7 @@ router.get("/getFilters", jobsController.getFilters);
 
 router.get("/PieChart", skilllogger, verifyToken, jobsController.Piechart);
 
+// ✅ New route: Get jobs for a specific company
+router.get("/getCompanyJobs", jobsController.getCompanyJobs);
+
 module.exports = router;
