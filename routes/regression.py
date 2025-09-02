@@ -3,7 +3,7 @@ from db import get_db
 import joblib
 import os
 import json
-
+#regressor
 regressor_bp = Blueprint("regressor", __name__)
 
 # Model path
