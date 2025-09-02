@@ -1,7 +1,7 @@
 const pool = require("../config/db");
 const { sendEmail } = require("../utils/mailer");
 
-(exports.getApplicationStatus = async (req, res) => {
+exports.getApplicationStatus = async (req, res) => {
   const userId = req.params.uid;
   console.log(`Received userId param: ${userId}`);
 
@@ -47,20 +47,20 @@ const { sendEmail } = require("../utils/mailer");
       message: err.message,
     });
   }
-}),
-  (exports.GetApplication = async (req, res) => {
-    const jobid = req.params.jobid;
-    console.log("Fetching applications for job ID:", jobid);
+};
+exports.GetApplication = async (req, res) => {
+  const jobid = req.params.jobid;
+  console.log("Fetching applications for job ID:", jobid);
 
-    if (!jobid) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Job ID is required." });
-    }
+  if (!jobid) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Job ID is required." });
+  }
 
-    try {
-      const [applications] = await pool.query(
-        `SELECT 
+  try {
+    const [applications] = await pool.query(
+      `SELECT 
         a.uid,
         a.jobid,
         a.applied,
@@ -72,36 +72,37 @@ const { sendEmail } = require("../utils/mailer");
         ap.resume_url,
         u.name,
         u.email,
-        u.phone
-      FROM applications AS a
-      JOIN applicants AS ap ON a.uid = ap.uid
-      LEFT JOIN users AS u ON a.uid = u.uid
+        u.phone,
+        COALESCE(r.label, 0) as label
+      FROM applications a
+      INNER JOIN applicants ap ON a.uid = ap.uid
+      INNER JOIN users u ON a.uid = u.uid
+      LEFT JOIN regressor r ON r.uid = a.uid AND r.jobid = a.jobid
       WHERE a.jobid = ?
-      ORDER BY a.applied`,
-        [jobid]
-      );
+      ORDER BY r.label IS NULL ASC, r.label DESC, a.applied ASC`,
+      [jobid]
+    );
 
-      if (applications.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "No applications found for this job.",
-        });
-      }
-
-      return res.status(200).json({
-        success: true,
-        data: applications,
-      });
-    } catch (error) {
-      console.error("Error fetching applications:", error);
-      return res.status(500).json({
+    if (applications.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: "Server error",
-        error: error.message,
+        message: "No applications found for this job.",
       });
     }
-  });
 
+    return res.status(200).json({
+      success: true,
+      data: applications,
+    });
+  } catch (error) {
+    console.error("Error fetching applications:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
 // FIXED: Get education by uid from URL params instead of middleware
 exports.GetEducation = async (req, res) => {
   const uid = req.params.uid; // Changed from req.uid to req.params.uid
@@ -379,9 +380,8 @@ exports.ApplyForJob = async (req, res) => {
     const appliedDate = new Date();
 
     await pool.query(
-      `INSERT INTO applications (uid, jobid, applied, status)
-       VALUES (?, ?, ?, 'pending')
-       ON DUPLICATE KEY UPDATE applied = VALUES(applied), status = 'pending'`,
+      `INSERT IGNORE INTO applications (uid, jobid, applied, status)
+   VALUES (?, ?, ?, 'pending')`,
       [uid, jobid, appliedDate]
     );
 

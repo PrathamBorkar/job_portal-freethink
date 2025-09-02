@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 
 const { updatePopularityScores } = require("./utils/updatePopularity");
 const authRoutes = require("./routes/auth.routes");
@@ -14,15 +15,17 @@ const locationRoutes = require("./routes/location.routes");
 const applicationRoutes = require("./routes/application.routes");
 const marketRoutes = require("./routes/market.routes");
 const roleRoutes = require("./routes/roles.routes");
+const geminiRoutes = require("./routes/gemini.routes");
 
 const app = express();
 app.use(
   cors({
-    origin: "http://localhost:9000",
+    origin: ["http://localhost:9000", "http://localhost:5173"],
     credentials: true,
   })
 );
 app.use(express.json());
+app.use(cookieParser());
 
 app.use("/", rootRoutes);
 app.use("/auth", authRoutes);
@@ -35,6 +38,7 @@ app.use("/jobs", jobsRoutes);
 app.use("/edit-profile", editProfile);
 app.use("/location", locationRoutes);
 app.use("/application", applicationRoutes);
+app.use("/gemini", geminiRoutes);
 
 setInterval(updatePopularityScores, 30 * 60 * 1000);
 

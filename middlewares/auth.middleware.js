@@ -19,6 +19,11 @@ const loginlogger = (req, res, next) => {
   next();
 };
 
+const verifylogger = (req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  next();
+};
+
 const otpLogger = (req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
   next();
@@ -61,13 +66,9 @@ const loginValidation = [
 ];
 
 const verifyToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"];
+  const token = req.cookies.token;
 
-  const token = authHeader && authHeader.split(" ")[1]; // Expecting: "Bearer <token>"
-
-  console.log("Auth header:", authHeader);
-
-  console.log("Extracted token:", token);
+  console.log("Cookie token:", token);
 
   if (!token) {
     return res.status(401).json({ error: "Access denied. No token provided." });
@@ -75,15 +76,11 @@ const verifyToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    req.user = decoded; // attach user data to request
-
-    console.log("Token verified, user:", decoded); // ← ADD DEBUG LOG
-
+    req.user = decoded; // Attach user payload
+    console.log("Token verified, user:", decoded);
     next();
   } catch (err) {
-    console.error("Token verification failed:", err.message); // ← ADD DEBUG LOG
-
+    console.error("Token verification failed:", err.message);
     return res.status(403).json({ error: "Invalid or expired token." });
   }
 };
@@ -92,6 +89,7 @@ module.exports = {
   otpLogger,
   registerlogger,
   loginlogger,
+  verifylogger,
   registerValidation,
   loginValidation,
   verifyToken,

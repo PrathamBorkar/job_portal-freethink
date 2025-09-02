@@ -2,6 +2,7 @@ const pool = require("../config/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { sendEmail } = require("../utils/mailer");
+const getUserById = require("../utils/getUserById");
 const otpStore = new Map();
 
 exports.sendOTP = async (req, res) => {
@@ -100,6 +101,7 @@ exports.register = async (req, res) => {
         );
 
         const newCid = companyResult.insertId;
+
         await conn.query("INSERT INTO recruiters (uid, cid) VALUES (?, ?)", [
           uid,
           newCid,
@@ -150,13 +152,19 @@ exports.register = async (req, res) => {
     await conn.commit();
 
     token = jwt.sign({ email: email, role: role }, process.env.JWT_SECRET, {
-      expiresIn: "1d",
+      expiresIn: "1d", // Token expires in 1 day
+    });
+
+    res.cookie("token", token, {
+      httpOnly: true, // Cookie is not accessible via JavaScript
+      secure: process.env.NODE_ENV === "production", // Only over HTTPS in production
+      sameSite: "Strict", // Prevents CSRF attacks
+      maxAge: 24 * 60 * 60 * 1000, // Cookie expiration time: 1 day
     });
 
     res.json({
       success: true,
       message: "Registration successful",
-      token,
       user: {
         uid: uid,
         email: email,
@@ -164,19 +172,20 @@ exports.register = async (req, res) => {
         role: role,
         phone: phone,
 
-        ...(role == "applicant" && {
+        ...(role === "applicant" && {
           education: education,
           experience: experience,
           skillids: skillids,
         }),
 
-        ...(role == "recruiter" && {
+        ...(role === "recruiter" && {
           company: { ...company, cid: cid },
         }),
       },
     });
   } catch (err) {
     await conn.rollback();
+
     if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
       return res.status(400).json({
         success: false,
@@ -185,6 +194,7 @@ exports.register = async (req, res) => {
         user: {},
       });
     }
+
     res
       .status(500)
       .json({ success: false, message: err.message, token, user: {} });
@@ -196,16 +206,12 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { email, password } = req.body;
   let token = null;
+
   try {
     const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [
       email,
     ]);
-
     const user = rows[0];
-    let appData;
-    let eduData;
-    let expData;
-    let appSkillData = [];
 
     if (!user) {
       return res
@@ -222,7 +228,7 @@ exports.login = async (req, res) => {
 
     token = jwt.sign(
       {
-        id: user.uid, // ← ADD THIS LINE (use whatever your user ID field is called)
+        id: user.uid,
         email: user.email,
         role: user.role,
       },
@@ -230,70 +236,47 @@ exports.login = async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    let recruiterInfo = null;
+    res.cookie("token", token, {
+      httpOnly: true, // Makes cookie inaccessible to JavaScript
+      secure: process.env.NODE_ENV === "production", // Only over HTTPS in production
+      sameSite: "Strict", // Prevent CSRF attacks
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
 
-    if (user.role === "recruiter") {
-      const [companyData] = await pool.query(
-        `
-        SELECT c.*
-        FROM recruiters r
-        JOIN company c ON r.cid = c.cid
-        WHERE r.uid = ?
-        `,
-        [user.uid]
-      );
+    const userDetails = await getUserById(user.uid);
 
-      recruiterInfo = companyData[0] || null;
-    } else {
-      const [appRow] = await pool.query(
-        "SELECT employmentStatus, jobType, preferredLocation, availability, linkedIn, portfolioWebsite FROM applicants WHERE uid = ?",
-        [user.uid]
-      );
-
-      const [eduRow] = await pool.query(
-        "SELECT * FROM education WHERE uid = ?",
-        [user.uid]
-      );
-
-      const [expRow] = await pool.query(
-        "SELECT * FROM experience WHERE uid = ?",
-        [user.uid]
-      );
-
-      const [appSkillRows] = await pool.query(
-        "SELECT skillid FROM applicant_skills WHERE uid = ?",
-        [user.uid]
-      );
-
-      appData = appRow[0];
-      eduData = eduRow[0];
-      expData = expRow[0];
-
-      for (const appSkill of appSkillRows) {
-        appSkillData.push(appSkill.skillid);
-      }
+    if (!userDetails) {
+      return res
+        .status(401)
+        .json({ message: "User not found", token, user: {} });
     }
 
-    res.json({
-      message: "Login successful",
-      token,
-      user: {
-        uid: user.uid,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        phone: user.phone,
-        gender: user?.gender,
-        dob: user?.dob,
+    const {
+      user: userData,
+      appData,
+      eduData,
+      expData,
+      appSkillData,
+      recruiterInfo,
+    } = userDetails;
 
-        ...(user.role == "applicant" && {
+    return res.json({
+      message: "Login successful",
+      user: {
+        uid: userData.uid,
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        phone: userData.phone,
+        gender: userData.gender,
+        dob: userData.dob,
+        ...(userData.role === "applicant" && {
           employmentStatus: appData.employmentStatus,
           jobType: appData.jobType,
           preferredLocation: appData.preferredLocation,
           availability: appData.availability,
           linkedIn: appData.linkedIn,
           portfolioWebsite: appData.portfolioWebsite,
-
           degree: eduData.degree,
           institution: eduData.institution,
           field_of_study: eduData.field_of_study,
@@ -302,15 +285,12 @@ exports.login = async (req, res) => {
           gradeValue: eduData.grade_value,
           gradeType: eduData.grade_type,
           education_level: eduData.education_level,
-
           expName: expData.expName,
           expRole: expData.role,
           expStart: expData.start,
           expEnd: expData.end,
-
           skillids: appSkillData,
         }),
-
         ...(recruiterInfo && {
           company: recruiterInfo,
         }),
@@ -322,10 +302,92 @@ exports.login = async (req, res) => {
         .status(400)
         .json({ message: "Invalid or expired token", token, user: {} });
     }
-    res.status(500).json({
-      message: err.message,
-      token,
-      user: {},
+    res.status(500).json({ message: err.message, token, user: {} });
+  }
+};
+
+exports.logout = (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
     });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Logged out successfully." });
+  } catch (err) {
+    console.error("Logout error:", err);
+    return res.status(500).json({ success: false, message: "Logout failed." });
+  }
+};
+
+exports.verify = async (req, res) => {
+  const token = req.cookies.token;
+  console.log("Verifying token:", token);
+  if (!token) {
+    return res
+      .status(401)
+      .json({ success: false, message: "No token provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const userDetails = await getUserById(decoded.id);
+
+    if (!userDetails) {
+      return res
+        .status(401)
+        .json({ success: false, message: "User not found" });
+    }
+
+    const { user, appData, eduData, expData, appSkillData, recruiterInfo } =
+      userDetails;
+    console.log("User details:", userDetails);
+
+    res.json({
+      success: true,
+      message: "Token verified successfully",
+      user: {
+        uid: user.uid,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        phone: user.phone,
+        gender: user.gender,
+        dob: user.dob,
+        ...(user.role === "applicant" && {
+          employmentStatus: appData.employmentStatus,
+          jobType: appData.jobType,
+          preferredLocation: appData.preferredLocation,
+          availability: appData.availability,
+          linkedIn: appData.linkedIn,
+          portfolioWebsite: appData.portfolioWebsite,
+          degree: eduData.degree,
+          institution: eduData.institution,
+          field_of_study: eduData.field_of_study,
+          start_date_degree: eduData.start_date_degree,
+          end_date_degree: eduData.end_date_degree,
+          gradeValue: eduData.grade_value,
+          gradeType: eduData.grade_type,
+          education_level: eduData.education_level,
+          expName: expData.expName,
+          expRole: expData.role,
+          expStart: expData.start,
+          expEnd: expData.end,
+          skillids: appSkillData,
+        }),
+        ...(recruiterInfo && {
+          company: recruiterInfo,
+        }),
+      },
+    });
+  } catch (error) {
+    res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired token" });
   }
 };

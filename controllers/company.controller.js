@@ -122,7 +122,6 @@ exports.getAllCompanies = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
-
 exports.getCompanyDetails = async (req, res) => {
   const companyId = req.query.cid;
   console.log(`Received companyId from query param: ${companyId}`);
@@ -131,94 +130,81 @@ exports.getCompanyDetails = async (req, res) => {
     return res.status(400).json({ error: "Missing cid query parameter" });
   }
 
-  const sql = `
-    SELECT 
-      c.cid,
-      c.name,
-      c.description,
-      c.companySize,
-      c.status,
-      c.tags,
-      c.type,
-      c.CEO,
-      c.companyEmail,
-      c.links,
-      c.locationids,
-      c.marketids
-    FROM company c
-    WHERE c.cid = ?
-  `;
-
   try {
-    const [rows] = await pool.query(sql, [companyId]);
+    // Get company details
+    const [companyRows] = await pool.query(
+      `SELECT cid, name, description, companySize, status, tags, type, CEO, companyEmail, links, locationids, marketids
+       FROM company
+       WHERE cid = ?`,
+      [companyId]
+    );
 
-    if (rows.length === 0) {
+    if (companyRows.length === 0) {
       return res.status(404).json({ error: "Company not found" });
     }
 
-    const company = rows[0];
+    const company = companyRows[0];
 
-    // Enhanced JSON parsing function that handles non-standard formats
-    const parseCompanyField = (field) => {
+    // Helper to parse JSON/array fields
+    const parseField = (field) => {
       if (!field) return [];
-
-      // Handle cases where it's already an array
       if (Array.isArray(field)) return field;
-
-      // Handle non-standard JSON format like {"Fun", "Nothing"}
-      if (
-        typeof field === "string" &&
-        field.startsWith("{") &&
-        field.endsWith("}")
-      ) {
-        try {
-          // First try standard JSON parsing
-          return JSON.parse(field);
-        } catch (e) {
-          // If standard JSON fails, handle non-standard format
-          const cleaned = field
-            .replace(/^{/, '["') // Replace { with ["
-            .replace(/}$/, '"]') // Replace } with "]
-            .replace(/","/g, '","') // Ensure proper comma separation
-            .replace(/, /g, '","'); // Replace comma+space with ","
-          try {
-            return JSON.parse(cleaned);
-          } catch (e2) {
-            console.error(`Failed to parse field: ${field}`, e2);
-            return [];
-          }
-        }
+      try {
+        return JSON.parse(field);
+      } catch {
+        // Fallback for comma-separated strings
+        return field.split(",").map((i) => i.trim());
       }
-
-      // Handle comma-separated strings
-      if (typeof field === "string" && field.includes(",")) {
-        return field
-          .split(",")
-          .map((item) => item.trim())
-          .filter((item) => item);
-      }
-
-      // Fallback for other cases
-      return [field];
     };
 
-    // Process fields to match the expected response structure
-    const processedCompany = {
-      ...company,
-      tags: parseCompanyField(company.tags),
-      type: parseCompanyField(company.type),
-      links: parseCompanyField(company.links),
-      // For locations and markets, we need to parse the IDs first
-      locations: parseCompanyField(company.locationids).join(","),
-      markets: parseCompanyField(company.marketids).join(","),
+    // Resolve location names from locationids
+    let locations = [];
+    const locationIds = parseField(company.locationids);
+    if (locationIds.length) {
+      const [locationRows] = await pool.query(
+        `SELECT lname FROM locations WHERE lid IN (?)`,
+        [locationIds]
+      );
+      locations = locationRows.map((l) => l.lname);
+    }
+
+    // Resolve market names from marketids
+    let markets = [];
+    const marketIds = parseField(company.marketids);
+    if (marketIds.length) {
+      const [marketRows] = await pool.query(
+        `SELECT mname FROM markets WHERE mid IN (?)`,
+        [marketIds]
+      );
+      markets = marketRows.map((m) => m.mname);
+    }
+
+    // Process tags, type, and links
+    const tags = parseField(company.tags);
+    const type = parseField(company.type);
+    const links = parseField(company.links);
+
+    // Construct final response
+    const response = {
+      cid: company.cid,
+      name: company.name,
+      description: company.description,
+      companySize: company.companySize,
+      status: company.status,
+      tags,
+      type,
+      CEO: company.CEO,
+      companyEmail: company.companyEmail,
+      links,
+      locations,
+      markets,
     };
 
-    res.json(processedCompany);
+    res.json(response);
   } catch (err) {
     console.error("Error fetching company detail:", err);
-    res.status(500).json({
-      error: "Internal server error",
-      message: err.message,
-    });
+    res
+      .status(500)
+      .json({ error: "Internal server error", message: err.message });
   }
 };

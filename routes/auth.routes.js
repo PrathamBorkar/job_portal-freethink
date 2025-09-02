@@ -5,6 +5,7 @@ const {
   otpLogger,
   registerlogger,
   loginlogger,
+  verifylogger,
   registerValidation,
   loginValidation,
 } = require("../middlewares/auth.middleware");
@@ -20,5 +21,7 @@ router.post("/login", loginlogger, loginValidation, authController.login);
 router.post("/send-otp", otpLogger, authController.sendOTP);
 router.post("/verify-otp", otpLogger, authController.verifyOTP);
 router.post("/change-pass", loginlogger, authController.changePassword);
+router.get("/verify-token", verifylogger, authController.verify);
+router.post("/logout", authController.logout);
 
 module.exports = router;
